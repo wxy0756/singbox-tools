@@ -10,7 +10,7 @@
 
 # 项目信息常量
 AUTHOR="LittleDoraemon"
-VERSION="v1.0.1"
+VERSION="v1.0.2"
 SINGBOX_VERSION="1.12.8"
 
 # 调试模式（可通过环境变量 DEBUG_MODE=true 启用）
