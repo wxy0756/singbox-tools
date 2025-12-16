@@ -223,14 +223,41 @@ install_singbox() {
 
     # 下载sing-box
     [ ! -d "${work_dir}" ] && mkdir -p "${work_dir}" && chmod 777 "${work_dir}"
+    
+    # 下载qrencode工具
     curl -sLo "${work_dir}/qrencode" "https://$ARCH.ssss.nyc.mn/qrencode"
-    curl -sLo "${work_dir}/sing-box" "https://$ARCH.ssss.nyc.mn/sbx"
+    # curl -sLo "${work_dir}/sing-box" "https://$ARCH.ssss.nyc.mn/sbx"
+
+    # 判断系统架构
+    ARCH_RAW=$(uname -m)
+    case "${ARCH_RAW}" in
+        'x86_64') ARCH='amd64' ;;
+        'x86' | 'i686' | 'i386') ARCH='386' ;;
+        'aarch64' | 'arm64') ARCH='arm64' ;;
+        'armv7l') ARCH='armv7' ;;
+        's390x') ARCH='s390x' ;;
+        *) red "不支持的架构: ${ARCH_RAW}"; exit 1 ;;
+    esac
+
+    # 正确的 Sing-box 下载地址（官方源）
+    SINGBOX_URL="https://github.com/SagerNet/sing-box/releases/latest/download/sing-box-linux-${ARCH}"
+
+    # 下载 sing-box（不会卡住、可自动失败退出）
+    if ! curl -L --retry 3 --retry-delay 2 -o "${work_dir}/sing-box" "$SINGBOX_URL"; then
+        red "Sing-box 下载失败，请检查网络或 GitHub 访问。"
+        exit 1
+    fi
+
+    chmod +x "${work_dir}/sing-box"
+
     chown root:root ${work_dir} && chmod +x ${work_dir}/${server_name} ${work_dir}/qrencode
+    
     # 检查是否通过环境变量提供了参数
     local use_env_vars=false
     if [ -n "$PORT" ] || [ -n "$UUID" ] || [ -n "$RANGE_PORTS" ]; then
         use_env_vars=true
     fi
+    
     # 获取端口
     if [ -n "$PORT" ]; then
         hy2_port=$PORT
