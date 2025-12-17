@@ -1374,6 +1374,18 @@ generate_qr() {
     echo "📱 请手机扫码以下二维码链接（全球可用）："
     encoded=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$TEXT")
     QR_URL="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=$encoded"
+
+    # 下载二维码 PNG 到本地
+    curl -s -o qr.png "$QR_URL"
+
+    # 尝试在终端显示二维码图片（如果终端支持）
+    if command -v imgcat >/dev/null 2>&1; then
+        imgcat qr.png
+    elif command -v viu >/dev/null 2>&1; then
+        viu qr.png
+    else
+        echo "终端不支持直接显示 PNG，请使用支持图片预览的终端（Kitty/iTerm2）"
+    fi
     echo "$QR_URL"
     echo "========================================"
 
