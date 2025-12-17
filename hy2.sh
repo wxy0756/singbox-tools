@@ -284,8 +284,8 @@ install_singbox() {
             ;;
     esac
 
-    FILENAME="sing-box-${VERSION}-linux-${ARCH}.tar.gz"
-    URL="https://github.com/SagerNet/sing-box/releases/download/v${VERSION}/${FILENAME}"
+    FILENAME="sing-box-${SINGBOX_VERSION}-linux-${ARCH}.tar.gz"
+    URL="https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/${FILENAME}"
 
     echo "Downloading $FILENAME..."
     curl -L -o "$FILENAME" "$URL"
