@@ -330,11 +330,11 @@ install_singbox() {
             # 验证端口范围
             if [ "$max_port" -le "$min_port" ]; then
                 red "错误：RANGE_PORTS端口范围无效，结束端口必须大于起始端口"
-                unset RANGE_PORTS min_port max_port
+                # 不再unset RANGE_PORTS，让quick_install函数来处理
             fi
         else
             red "错误：RANGE_PORTS格式无效，应为 起始端口-结束端口 (例如: 20000-50000)"
-            unset RANGE_PORTS
+            # 不再unset RANGE_PORTS，让quick_install函数来处理
         fi
     fi
     
@@ -411,11 +411,7 @@ cat > "${config_dir}" << EOF
 }
 EOF
 
-    # 如果提供了RANGE_PORTS环境变量，则自动配置端口跳跃
-    if [ -n "$RANGE_PORTS" ]; then
-        yellow "检测到RANGE_PORTS环境变量，正在自动配置端口跳跃: $min_port-$max_port"
-        configure_port_jump "$min_port" "$max_port"
-    fi
+    # RANGE_PORTS的处理已移到install_singbox函数外部
     
 
 }
@@ -1127,19 +1123,21 @@ quick_install() {
     manage_packages install nginx jq tar openssl lsof coreutils
     install_singbox
     
+    # 启动服务
     if command_exists systemctl; then
         main_systemd_services
     elif command_exists rc-update; then
         alpine_openrc_services
         change_hosts
         rc-service sing-box restart
-
     else
         red "系统不支持的初始化系统"
         exit 1 
     fi
     
     sleep 5
+    # 处理RANGE_PORTS环境变量
+    handle_range_ports
     get_info
     add_nginx_conf
 }
@@ -1156,6 +1154,7 @@ main_loop() {
                 else
                     manage_packages install nginx jq tar openssl lsof coreutils
                     install_singbox
+                    
                     if command_exists systemctl; then
                         main_systemd_services
                     elif command_exists rc-update; then
@@ -1168,6 +1167,8 @@ main_loop() {
                     fi
 
                     sleep 5
+                    # 处理RANGE_PORTS环境变量
+                    handle_range_ports
                     get_info
                     add_nginx_conf
                 fi
@@ -1233,6 +1234,28 @@ get_user_uuid() {
     fi
     
     echo "$user_uuid"
+}
+
+# 处理RANGE_PORTS环境变量
+handle_range_ports() {
+    # 如果提供了RANGE_PORTS环境变量，则自动配置端口跳跃
+    if [ -n "$RANGE_PORTS" ]; then
+        # 解析端口范围
+        if [[ "$RANGE_PORTS" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+            local min_port="${BASH_REMATCH[1]}"
+            local max_port="${BASH_REMATCH[2]}"
+            
+            # 验证端口范围
+            if [ "$max_port" -gt "$min_port" ]; then
+                yellow "检测到RANGE_PORTS环境变量，正在自动配置端口跳跃: $min_port-$max_port"
+                configure_port_jump "$min_port" "$max_port"
+            else
+                red "错误：RANGE_PORTS端口范围无效，结束端口必须大于起始端口"
+            fi
+        else
+            red "错误：RANGE_PORTS格式无效，应为 起始端口-结束端口 (例如: 20000-50000)"
+        fi
+    fi
 }
 
 # 配置端口跳跃功能
