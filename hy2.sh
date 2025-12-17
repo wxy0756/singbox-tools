@@ -9,7 +9,7 @@
 export LANG=en_US.UTF-8
 
 # 固定版本号
-SINGBOX_VERSION="1.12.12"
+SINGBOX_VERSION="1.12.13"
 
 
 # 项目信息常量
