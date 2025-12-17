@@ -297,18 +297,28 @@ install_singbox() {
     cd "sing-box-${SINGBOX_VERSION}-linux-${ARCH}"
 
  
-   # 下载完成并解压后，假设当前目录有 ./sing-box
-    chmod +x sing-box
+    # 查找解压出来的目录
+    extracted_dir=$(find . -maxdepth 1 -type d -name "sing-box-*")
 
-    # 安装执行文件到 work_dir
-    mkdir -p "${work_dir}"
-    # 将可执行文件移动到你定义的 work_dir
-    mv sing-box "${work_dir}/${server_name}"
-
-    echo "可执行文件已安装到：${work_dir}/${server_name}"
 
     # 创建工作目录
     mkdir -p "${work_dir}"
+
+   # 下载完成并解压后，假设当前目录有 ./sing-box，注意：不同的singbox版本，目录不一样哦
+    chmod +x sing-box
+
+    # 如果目录存在，则进入
+    if [ -n "$extracted_dir" ]; then
+        echo "进入解压目录: $extracted_dir"
+        # 将可执行文件移动到你定义的 work_dir
+        mv sing-box "${work_dir}/${server_name}"
+        echo "可执行文件已安装到：${work_dir}/${server_name}"
+    else
+        echo "❌ 未找到解压目录 sing-box-*"
+        exit 1
+    fi
+
+
 
     # 检查是否通过环境变量提供了参数
     local use_env_vars=false
