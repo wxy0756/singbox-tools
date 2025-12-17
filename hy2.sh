@@ -297,6 +297,13 @@ install_singbox() {
     if [ -n "$PORT" ] || [ -n "$UUID" ] || [ -n "$RANGE_PORTS" ]; then
         use_env_vars=true
     fi
+    
+    # 打印是否是交互式模式
+    if [ "$use_env_vars" = true ]; then
+        echo "当前运行模式: 非交互式模式"
+    else
+        echo "当前运行模式: 交互式模式"
+    fi
     # 获取端口
     if [ -n "$PORT" ]; then
         hy2_port=$PORT
@@ -1198,6 +1205,7 @@ main_loop() {
 
 # 获取用户输入的端口（确保端口未被占用）
 get_user_port() {
+    echo "开始调用 get_user_port函数"
     local user_port
     
     while true; do
