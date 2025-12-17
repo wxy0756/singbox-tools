@@ -315,11 +315,6 @@ install_singbox() {
     echo "进入解压目录: $extracted_dir"
     cd "$extracted_dir" || exit 1
 
-    if [ -z "$extracted_dir" ]; then
-        echo "❌ 解压失败：未找到解压目录 sing-box-*"
-        exit 1
-    fi
-
     echo "进入解压目录: $extracted_dir"
     cd "$extracted_dir" || exit 1
 
