@@ -14,7 +14,7 @@ SINGBOX_VERSION="1.12.13"
 
 # 项目信息常量
 AUTHOR="LittleDoraemon"
-VERSION="v1.0.1"
+VERSION="v1.0.2"
 
 # 定义颜色
 re="\033[0m"
@@ -1366,7 +1366,7 @@ menu() {
    blue "==============================================="
    blue "          sing-box 一键安装管理脚本"
    blue "         （Hysteria2版）"
-   skyblue "        作者: $AUTHOR"
+   skyblue "          作者: $AUTHOR"
    yellow "         版本: $VERSION"
    blue "==============================================="
    echo ""
