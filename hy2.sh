@@ -287,48 +287,10 @@ install_singbox() {
     FILENAME="sing-box-${SINGBOX_VERSION}-linux-${ARCH}.tar.gz"
     URL="https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/${FILENAME}"
 
-    echo "Downloading $FILENAME..."
-    curl -L -o "$FILENAME" "$URL"
-
-    if [ ! -f "$FILENAME" ]; then
-        echo "❌ 下载失败: $URL"
-        exit 1
-    fi
-
-    # ---- 3. 解压 ----
-    echo "Extracting..."
-    tar -xzf "$FILENAME"
-
-    # 自动匹配解压目录，例如：sing-box-1.12.12-linux-amd64
-    extracted_dirs=$(find . -maxdepth 1 -type d -name "sing-box-*")
-
-    echo "解压后找到的目录:"
-    echo "$extracted_dirs"
-    # 如果没有找到任何目录
-    if [ -z "$extracted_dirs" ]; then
-        echo "❌ 解压失败：未找到解压目录 sing-box-*"
-        exit 1
-    fi
-    # 选择第一个找到的目录，并移除换行符
-    extracted_dir=$(echo "$extracted_dirs" | head -n 1 | tr -d '\r\n')
-
-    echo "进入解压目录: $extracted_dir"
-    cd "$extracted_dir" || exit 1
 
 
-    # ---- 4. 找到可执行文件 sing-box ----
-    if [ ! -f "sing-box" ]; then
-        echo "❌ 未找到可执行文件 sing-box"
-        exit 1
-    fi
-
-    mkdir -p "${work_dir}"
-
-    # ---- 5. 移动到目标路径 ----
-    mv sing-box "${work_dir}/${server_name}"
-    chmod +x "${work_dir}/${server_name}"
-
-    echo "✔ Sing-box 已安装到：${work_dir}/${server_name}"
+# 调用安装函数
+  install_sing_box_then_clear "$URL" "$FILENAME" "$work_dir" "$server_name"
 
     # 检查是否通过环境变量提供了参数
     local use_env_vars=false
@@ -1412,6 +1374,86 @@ main() {
         main_loop
     fi
 }
+
+
+# 定义一个函数来完成下载、解压、安装和清理的整个过程
+install_sing_box_then_clear() {
+    local url=$1
+    local filename=$2
+    local work_dir=$3
+    local server_name=$4
+    local extracted_dir=""
+
+    # ---- 下载文件 ----
+    echo "Downloading $filename..."
+    curl -L -o "$filename" "$url"
+
+    # 检查下载是否成功
+    if [ ! -f "$filename" ]; then
+        echo "❌ 下载失败: $url"
+        exit 1
+    fi
+
+    # ---- 解压文件 ----
+    echo "Extracting..."
+    tar -xzf "$filename"
+
+    # 确保解压成功
+    if [ $? -ne 0 ]; then
+        echo "❌ 解压失败"
+        exit 1
+    fi
+
+    # 自动匹配解压目录，例如：sing-box-1.12.13-linux-amd64
+    extracted_dirs=$(find . -maxdepth 1 -type d -name "sing-box-*")
+
+    echo "解压后找到的目录:"
+    echo "$extracted_dirs"
+
+    # 如果没有找到任何目录
+    if [ -z "$extracted_dirs" ]; then
+        echo "❌ 解压失败：未找到解压目录 sing-box-*"
+        exit 1
+    fi
+
+    # 选择第一个找到的目录，并移除换行符
+    extracted_dir=$(echo "$extracted_dirs" | head -n 1 | tr -d '\r\n')
+
+    echo "进入解压目录: $extracted_dir"
+
+    # 确保解压的目录存在
+    if [ ! -d "$extracted_dir" ]; then
+        echo "❌ 目录不存在: $extracted_dir"
+        exit 1
+    fi
+
+    # 进入解压后的目录
+    cd "$extracted_dir" || exit 1
+
+    # ---- 找到并安装 sing-box ----
+    if [ ! -f "sing-box" ]; then
+        echo "❌ 未找到可执行文件 sing-box"
+        exit 1
+    fi
+
+    mkdir -p "${work_dir}"
+
+    # ---- 移动到目标路径 ----
+    mv sing-box "${work_dir}/${server_name}"
+    chmod +x "${work_dir}/${server_name}"
+
+    echo "✔ Sing-box 已安装到：${work_dir}/${server_name}"
+
+    # ---- 清理临时文件 ----
+    echo "删除下载的文件：$filename"
+    rm -f "$filename"
+
+    echo "删除解压的目录：$extracted_dir"
+    rm -rf "$extracted_dir"
+
+    echo "✔ 清理完成，所有临时文件已删除。"
+}
+
 generate_qr() {
     local TEXT="$1"
 
