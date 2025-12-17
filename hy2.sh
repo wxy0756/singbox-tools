@@ -14,7 +14,7 @@ SINGBOX_VERSION="1.12.13"
 
 # 项目信息常量
 AUTHOR="LittleDoraemon"
-VERSION="v1.0.2"
+VERSION="v1.0.1"
 
 # 定义颜色
 re="\033[0m"
@@ -1384,6 +1384,9 @@ install_sing_box_then_clear() {
     local server_name=$4
     local extracted_dir=""
 
+    # 记录当前工作目录
+    initial_dir=$(pwd)
+
     # ---- 下载文件 ----
     echo "Downloading $filename..."
     curl -L -o "$filename" "$url"
@@ -1452,6 +1455,7 @@ install_sing_box_then_clear() {
     rm -rf "$extracted_dir"
 
     echo "✔ 清理完成，所有临时文件已清理。"
+    cd "$initial_dir"  # 恢复到最初的目录
 }
 
 generate_qr() {
