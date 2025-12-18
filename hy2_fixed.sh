@@ -546,29 +546,89 @@ handle_range_ports() {
 # ======================================================================
 
 generate_subscription_info() {
-    local ip node_name url
 
-    ip=$(get_realip)
-    node_name="${NODE_NAME:-HY2-Node}"
+    # ------------------------
+    # 获取 IPv4 / IPv6
+    # ------------------------
+    ipv4=$(curl -4 -s https://api.ipify.org || curl -4 -s ifconfig.me)
+    ipv6=$(curl -6 -s https://api64.ipify.org || curl -6 -s ifconfig.me)
 
-    # 生成基础 URL
+    # ------------------------
+    # 判断是否开启 RANGE_PORTS
+    # ------------------------
     if [[ -n "$RANGE_PORTS" ]]; then
-        local min="${RANGE_PORTS%-*}"
-        local max="${RANGE_PORTS#*-}"
-
-        url="hysteria2://${UUID}@${ip}:${hy2_port}/?insecure=1&alpn=h3&obfs=none&mport=${hy2_port},${min}-${max}#${node_name}"
+        port_display="端口跳跃范围：$RANGE_PORTS"
+        base_url="http://${ipv4}:${RANGE_PORTS}/${password}"
     else
-        url="hysteria2://${UUID}@${ip}:${hy2_port}/?insecure=1&alpn=h3&obfs=none#${node_name}"
+        port_display="单端口模式：${nginx_port}"
+        base_url="http://${ipv4}:${nginx_port}/${password}"
     fi
 
-    echo "$url" > "$client_dir"
-    _purple "$url"
+    clear
+    _blue "============================================================"
+    _blue "                    Hy2 节点订阅信息"
+    _blue "============================================================"
+    _yellow "服务器 IPv4：$ipv4"
+    _yellow "服务器 IPv6：${ipv6:-无 IPv6}"
+    _yellow "$port_display"
+    _yellow "节点密码：$password"
+    _blue "============================================================"
 
-    base64 -w0 "$client_dir" > "$work_dir/sub.txt"
-    chmod 644 "$work_dir/sub.txt"
+    echo
+    _red "⚠ 温馨提示：部分客户端需要关闭 TLS 校验 / 允许 Insecure"
+    _red "  请在 V2RayN / Shadowrocket / Nekobox / Karing 等中启用「跳过证书验证」"
 
-    _yellow "\n订阅链接（用于 V2RayN / Clash / Shadowrocket）："
-    _green "http://${ip}:${nginx_port}/${password}"
+    # ------------------------
+    # ① 通用订阅
+    # ------------------------
+    echo
+    # ① 通用订阅（V2RayN / SR / V2RayNG / NekoBox / Loon / Karing）
+    _green "① 通用订阅（V2RayN / SR / V2RayNG / NekoBox / Loon / Karing）"
+    _green "$base_url"
+    generate_qr "$base_url"
+    display_qr_link "$base_url"
+    _yellow "------------------------------------------------------------"
+
+
+    # ② Clash / Mihomo / Clash Verge
+    clash_sub="https://sublink.eooce.com/clash?config=${base_url}"
+    _green "② Clash / Mihomo / Clash Verge 订阅："
+    _green "$clash_sub"
+    generate_qr "$clash_sub"
+    display_qr_link "$clash_sub"
+    _yellow "------------------------------------------------------------"
+
+
+    # ③ Sing-box
+    singbox_sub="https://sublink.eooce.com/singbox?config=${base_url}"
+    _green "③ Sing-box 订阅："
+    _green "$singbox_sub"
+    generate_qr "$singbox_sub"
+    display_qr_link "$singbox_sub"
+    _yellow "------------------------------------------------------------"
+
+
+    # ④ Surge
+    surge_sub="https://sublink.eooce.com/surge?config=${base_url}"
+    _green "④ Surge 订阅："
+    _green "$surge_sub"
+    generate_qr "$surge_sub"
+    display_qr_link "$surge_sub"
+    _yellow "------------------------------------------------------------"
+
+
+    # ⑤ Quantumult X
+    qx_sub="https://sublink.eooce.com/qx?config=${base_url}"
+    _green "⑤ Quantumult X 订阅："
+    _green "$qx_sub"
+    generate_qr "$qx_sub"
+    display_qr_link "$qx_sub"
+    _yellow "------------------------------------------------------------"
+
+
+    _blue "============================================================"
+    _blue "          订阅生成完成，如遇 APP 不兼容请自行想招"
+    _blue "============================================================"
 }
 
 
@@ -888,6 +948,20 @@ main_loop() {
 
         read -n 1 -s -r -p $'\033[1;92m按任意键返回菜单...\033[0m'
     done
+}
+
+
+display_qr_link() {
+    local TEXT="$1"
+    local encoded
+
+    encoded=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$TEXT")
+    local QR_URL="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=$encoded"
+
+    echo
+    _yellow "📱 二维码图片链接（点击此链接打开后扫码）："
+    echo "$QR_URL"
+    echo
 }
 
 
