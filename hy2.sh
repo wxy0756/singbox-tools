@@ -99,14 +99,15 @@ check_service() {
 }
 
 # ----------------------------
-# 检测运行模式（交互/非交互）
+# 判断是否进入非交互式模式
 # ----------------------------
 is_interactive_mode() {
-    # 如果外部设置了任意一个参数，则视为非交互模式运行
-    if [[ -n "$PORT" ]] || [[ -n "$UUID" ]] || [[ -n "$RANGE_PORTS" ]] || [[ -n "$NODE_NAME" ]]; then
-        return 1   # 非交互模式
+    # 只要 PORT、UUID、RANGE_PORTS、NODE_NAME 任意一个非空
+    # 就强制进入全自动安装模式（非交互）
+    if [[ -n "$PORT" || -n "$UUID" || -n "$RANGE_PORTS" || -n "$NODE_NAME" ]]; then
+        return 1   # 非交互式模式
     else
-        return 0   # 交互模式（进入菜单）
+        return 0   # 交互式模式
     fi
 }
 
@@ -957,12 +958,22 @@ main_loop() {
 
 main() {
     is_interactive_mode
-    if [[ $? -eq 0 ]]; then
-        main_loop
-    else
+    if [[ $? -eq 1 ]]; then
+        # 非交互模式（自动安装）
         quick_install
+
+        # 自动安装完成后，停在原地等待用户按任意键
+        green "\n非交互模式安装已完成！"
+        read -n 1 -s -r -p $'\033[1;92m按任意键进入主菜单...\033[0m'
+
+        # 进入主菜单（交互模式）
         main_loop
+        return
     fi
+
+    # 若为交互模式，从一开始就进入菜单
+    main_loop
 }
+
 
 main
