@@ -50,7 +50,18 @@ server_name="sing-box"
 work_dir="/etc/sing-box"
 config_dir="${work_dir}/config.json"
 client_dir="${work_dir}/url.txt"
-export hy2_port=${PORT:-$(shuf -i 1-65535 -n 1)}
+
+
+# 设置默认值
+DEFAULT_PORT=$(shuf -i 1-65535 -n 1)  # 随机生成一个默认端口，范围是1-65535
+DEFAULT_RANGE_PORTS=""                    # 默认RANGE_PORTS为空
+DEFAULT_UUID=$(cat /proc/sys/kernel/random/uuid)  # 获取系统默认UUID
+
+# 获取环境变量，如果环境变量有值则优先使用环境变量
+PORT="${PORT:-$DEFAULT_PORT}"                # 如果环境变量PORT有值，使用环境变量PORT，否则使用默认值
+UUID="${UUID:-$DEFAULT_UUID}"                # 如果环境变量UUID有值，使用环境变量UUID，否则使用默认值
+RANGE_PORTS="${RANGE_PORTS:-$DEFAULT_RANGE_PORTS}"  # 如果环境变量RANGE_PORTS有值，使用环境变量RANGE_PORTS，否则使用默认值
+
 
 # 默认节点名称常量
 # 根据文件名自动判断协议类型
@@ -302,64 +313,13 @@ install_singbox() {
         echo "当前运行模式: 交互式模式"
     fi
 
-    echo "PORT: '$PORT'"
-    # 获取端口
-    if [ -n "$PORT" ]; then
-        echo "Entering if branch"
-        hy2_port=$PORT
-    else
-        # 非交互式模式下直接生成随机端口
-        echo "Entering random port"
-        if [ "$use_env_vars" = true ]; then
-            echo "使用非交互式模式，生成随机端口"
-            hy2_port=$(shuf -i 1-65535 -n 1)
-            echo "生成的随机端口: $hy2_port"
-        else
-            echo "使用交互式模式，调用 get_user_port 函数"
-            hy2_port=$(get_user_port)
-            echo "从 get_user_port 函数获取的端口: $hy2_port"
-        fi
-    fi
-
-    # 生成随机端口和UUID
-    nginx_port=$(($hy2_port + 1)) 
-
-    # 获取UUID
-    if [ -n "$UUID" ]; then
-        echo "使用环境变量提供的UUID: $UUID"
-        uuid=$UUID
-    else
-        # 非交互式模式下直接生成随机UUID
-        if [ "$use_env_vars" = true ]; then
-            echo "使用非交互式模式，生成随机UUID"
-            uuid=$(cat /proc/sys/kernel/random/uuid)
-            echo "生成的随机UUID: $uuid"
-        else
-            echo "使用交互式模式，调用 get_user_uuid 函数"
-            uuid=$(get_user_uuid)
-            echo "从 get_user_uuid 函数获取的UUID: $uuid"
-        fi
-    fi
-
-    # 如果提供了RANGE_PORTS环境变量，则记录相关信息
-    if [ -n "$RANGE_PORTS" ]; then
-        # 解析端口范围
-        if [[ "$RANGE_PORTS" =~ ^([0-9]+)-([0-9]+)$ ]]; then
-            min_port="${BASH_REMATCH[1]}"
-            max_port="${BASH_REMATCH[2]}"
-            
-            # 验证端口范围
-            if [ "$max_port" -le "$min_port" ]; then
-                red "错误：RANGE_PORTS端口范围无效，结束端口必须大于起始端口"
-                unset RANGE_PORTS  # 清除无效的 RANGE_PORTS
-                return 1  # 停止继续执行
-            fi
-        else
-            red "错误：RANGE_PORTS格式无效，应为 起始端口-结束端口 (例如: 1-65535)"
-            unset RANGE_PORTS  # 清除无效的 RANGE_PORTS
-            return 1  # 停止继续执行
-        fi
-    fi
+    # 获取参数值
+    PORT=$(get_port "$PORT")
+    UUID=$(get_uuid "$UUID")
+    RANGE_PORTS=$(get_range_ports "$RANGE_PORTS")
+    
+    # 定义hy2_port变量
+    hy2_port=$PORT    
 
     # 确保工作目录存在
     [ ! -d "${work_dir}" ] && mkdir -p "${work_dir}"
@@ -1216,85 +1176,8 @@ main_loop() {
     done
 }
 
-reading_input() {
-    echo -n "$1"
-    read "$2"
-}
 
-# 获取用户输入的端口（确保端口未被占用）
-get_user_port() {
-    local user_port
-    
-    echo "开始调用 get_user_port 函数"
-    
-    while true; do
-        # 提示用户输入端口
-        reading "请输入端口号 (1-65535)，或按回车跳过使用随机端口: ",user_port
-        
-        # 如果用户直接按回车，使用随机端口
-        if [ -z "$user_port" ]; then
-            echo "用户选择使用随机端口"
-            user_port=$(shuf -i 1-65535 -n 1)
-            echo "生成的随机端口: $user_port"
-            return $user_port
-        fi
-        
-        # 去除用户输入中的空格
-        user_port=$(echo "$user_port" | tr -d '[:space:]')
-        
-        # 验证端口范围
-        if ! [[ "$user_port" =~ ^[0-9]+$ ]] || [ "$user_port" -lt 1 ] || [ "$user_port" -gt 65535 ]; then
-            echo "端口范围验证失败: $user_port"
-            red "端口号必须是1-65535之间的整数"
-            echo "请重新输入"
-            continue
-        fi
-        
-        # 检查端口是否已被占用
-        if ss -tuln | grep -q ":$user_port "; then
-            echo "端口已被占用: $user_port"
-            red "端口 $user_port 已被占用，请选择其他端口"
-            echo "请重新输入"
-            continue
-        fi
-        
-        # 端口有效且未被占用
-        echo "用户输入的有效端口: $user_port"
-        return $user_port
-    done
-}
-# 获取用户输入的UUID
-get_user_uuid() {
-    local user_uuid
-    
-    echo "开始调用 get_user_uuid 函数"
-    
-    while true; do
-        # 提示用户输入UUID
-        echo  "请输入UUID，或按回车跳过使用随机UUID: "
 
-        reading "请输入UUID，或按回车跳过使用随机UUID: ",user_uuid
- 
-        # 如果用户直接按回车，生成随机UUID
-        if [ -z "$user_uuid" ]; then
-            echo "用户选择使用随机UUID"
-            user_uuid=$(cat /proc/sys/kernel/random/uuid)
-            echo "生成的随机UUID: $user_uuid"
-            return $user_uuid
-        else
-            # 验证UUID格式是否正确
-            if ! [[ "$user_uuid" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]]; then
-                echo "UUID格式验证失败: $user_uuid"
-                red "无效的UUID格式，请重新输入或按回车跳过"
-                echo "请重新输入UUID"
-                continue
-            else
-                echo "用户输入的有效UUID: $user_uuid"
-                return $user_uuid
-            fi
-        fi
-    done
-}
 # 处理RANGE_PORTS环境变量
 handle_range_ports() {
     # 如果提供了RANGE_PORTS环境变量，则自动配置端口跳跃
@@ -1372,6 +1255,100 @@ EOF
     fi
     
     green "\nhysteria2端口跳跃已开启,跳跃端口为：${purple}$min_port-$max_port${re} ${green}请更新订阅或手动复制以上hysteria2节点${re}\n"
+}
+
+# 验证端口号是否有效
+function is_valid_port() {
+  local port=$1
+  [[ "$port" =~ ^[1-9][0-9]{0,4}$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
+}
+
+# 验证RANGE_PORTS格式是否正确
+function is_valid_range_ports() {
+  local range=$1
+  # RANGE_PORTS必须符合 start_port-end_port 的格式
+  if [[ "$range" =~ ^([0-9]{1,5})-([0-9]{1,5})$ ]]; then
+    start_port=${BASH_REMATCH[1]}
+    end_port=${BASH_REMATCH[2]}
+    # 检查端口范围是否合法
+    if is_valid_port "$start_port" && is_valid_port "$end_port" && [ "$start_port" -le "$end_port" ]; then
+      return 0
+    else
+      return 1
+    fi
+  else
+    return 1
+  fi
+}
+
+# 获取端口号
+function get_port() {
+  local port=$1
+  if [[ -z "$port" ]]; then
+    red "请输入端口号 (1-65535)，如果留空将自动生成一个未占用的端口:"
+    
+    read user_port
+    if [[ -n "$user_port" ]]; then
+      if is_valid_port "$user_port"; then
+        echo "$user_port"
+      else
+        red "输入的端口号无效，请输入一个有效的端口号 (1-65535)!" >&2
+        exit 1
+      fi
+    else
+      # 随机生成端口并检查是否被占用
+      while : ; do
+        local random_port=$(shuf -i 1-65535 -n 1)  # 生成1-65535范围内的随机端口
+        if ! lsof -i :$random_port &>/dev/null; then
+          echo "$random_port"
+          break
+        fi
+      done
+    fi
+  else
+    echo "$port"
+  fi
+}
+
+# 获取UUID
+function get_uuid() {
+  local uuid=$1
+  if [[ -z "$uuid" ]]; then
+    red "请输入UUID，留空将自动生成:"
+    read user_uuid
+    if [[ -n "$user_uuid" ]]; then
+      if is_valid_uuid "$user_uuid"; then
+        echo "$user_uuid"
+      else
+        red "输入的UUID格式无效，请输入正确的UUID格式!" >&2
+        exit 1
+      fi
+    else
+      echo "$DEFAULT_UUID"
+    fi
+  else
+    echo "$uuid"
+  fi
+}
+
+# 验证UUID的格式
+function is_valid_uuid() {
+  local uuid=$1
+  [[ "$uuid" =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]]
+}
+
+# 获取RANGE_PORTS
+function get_range_ports() {
+  local range=$1
+  if [[ -n "$range" ]]; then
+    if ! is_valid_range_ports "$range"; then
+      red "RANGE_PORTS的格式无效，应该是 start_port-end_port 的形式，且端口号必须在1-65535之间，且 start_port <= end_port!" >&2
+      exit 1
+    fi
+    echo "$range"
+  else
+    echo "$DEFAULT_RANGE_PORTS"
+  fi
 }
 
 # 主菜单
