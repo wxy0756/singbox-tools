@@ -1288,15 +1288,16 @@ function is_valid_port() {
   fi
 }
 
+# 判断端口占用
 function is_port_occupied() {
   local port=$1
-  # 不输出任何内容
   if lsof -i :$port &>/dev/null; then
-    return 0  # 已占用
+    return 0  # 占用
   else
     return 1  # 未占用
   fi
 }
+
 
 # 检查端口是否被占用
 function is_valid_range_ports() {
@@ -1358,65 +1359,26 @@ function is_valid_range_ports_format() {
 # 获取端口号
 function get_port() {
   local port=$1
-  local interactive_mode=$2  # 将交互模式作为参数传入
-  while : ; do
-    if [[ -z "$port" ]]; then  # 环境变量 PORT 为空时，接受用户输入
-      if [[ "$interactive_mode" -eq 0 ]]; then
-        echo "请输入端口号 (1-65535)，如果留空将自动生成一个未占用的端口:"
-        read user_port
-        if [[ -n "$user_port" ]]; then
-          is_valid_port "$user_port"
-          if [ $? -eq 1 ]; then
-            if is_port_occupied "$user_port"; then
-              echo "端口 $user_port 已被占用，请输入其他端口！"
-            else
-              echo "使用用户输入的端口: $user_port"
-              break
-            fi
-          else
-            echo "输入的端口号无效，请输入一个有效的端口号 (1-65535)!"
-          fi
-        else
-          # 随机生成端口并检查是否被占用
-          while : ; do
-            local random_port=$(shuf -i 1-65535 -n 1)  # 生成1-65535范围内的随机端口
-            echo "自动生成的随机端口: $random_port"
-            if ! is_port_occupied "$random_port"; then
-              echo "使用生成的端口: $random_port"
-              break
-            fi
-          done
-          break
-        fi
-      else
-        # 非交互模式下，直接生成一个未占用的随机端口
-        while : ; do
-          local random_port=$(shuf -i 1-65535 -n 1)  # 生成1-65535范围内的随机端口
-          echo "自动生成的随机端口: $random_port"
-          if ! is_port_occupied "$random_port"; then
-            echo "使用生成的端口: $random_port"
-            break
-          fi
-        done
-        break
-      fi
-    else  # 环境变量 PORT 有值时，使用它
-      is_valid_port "$port"
-      if [ $? -eq 1 ]; then
-        if is_port_occupied "$port"; then
-          echo "端口 $port 已被占用，请选择其他端口！"
-          # 进入用户输入端口号的模式
-          get_port  # 递归调用，要求用户重新输入端口号
-        else
-          echo "使用环境变量中的端口: $port"
-          break
-        fi
-      else
-        echo "输入的端口号无效，请输入一个有效的端口号 (1-65535)!"
-      fi
-    fi
+  local interactive=$2
+
+  # 环境变量已有端口
+  if [[ -n "$port" ]]; then
+    is_valid_port "$port" || exit 1
+    is_port_occupied "$port" && exit 1
+    echo "$port"
+    return
+  fi
+
+  # 无端口 → 随机生成未占用端口
+  while :; do
+    local random_port=$(shuf -i 1-65535 -n 1)
+    is_port_occupied "$random_port" || {
+      echo "$random_port"
+      return
+    }
   done
 }
+
 
 # 获取UUID
 function get_uuid() {
