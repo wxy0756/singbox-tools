@@ -1270,14 +1270,14 @@ function is_valid_port() {
   local port=$1
   echo "检查端口 $port 是否有效..."
   if [[ -n "$port" ]] && [[ "$port" =~ ^[1-9][0-9]{0,4}$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; then
-    return 0
-  else
     return 1
+  else
+    return 0
   fi
 }
 
-# 验证端口是否被占用
-function is_port_in_use() {
+# 检查端口是否被占用
+function is_port_occupied() {
   local port=$1
   echo "检查端口 $port 是否被占用..."
   if lsof -i :$port &>/dev/null; then
@@ -1299,7 +1299,11 @@ function is_valid_range_ports() {
     start_port=${BASH_REMATCH[1]}
     end_port=${BASH_REMATCH[2]}
     # 检查端口范围是否合法
-    if is_valid_port "$start_port" && is_valid_port "$end_port" && [ "$start_port" -le "$end_port" ]; then
+    is_valid_port "$start_port"
+    start_port_valid=$?
+    is_valid_port "$end_port"
+    end_port_valid=$?
+    if [ "$start_port_valid" -eq 1 ] && [ "$end_port_valid" -eq 1 ] && [ "$start_port" -le "$end_port" ]; then
       echo "RANGE_PORTS格式正确: $start_port 到 $end_port"
       return 0
     else
@@ -1332,8 +1336,9 @@ function get_port() {
         echo "请输入端口号 (1-65535)，如果留空将自动生成一个未占用的端口:"
         read user_port
         if [[ -n "$user_port" ]]; then
-          if is_valid_port "$user_port"; then
-            if is_port_in_use "$user_port"; then
+          is_valid_port "$user_port"
+          if [ $? -eq 1 ]; then
+            if is_port_occupied "$user_port"; then
               echo "端口 $user_port 已被占用，请输入其他端口！"
             else
               echo "使用用户输入的端口: $user_port"
@@ -1347,7 +1352,7 @@ function get_port() {
           while : ; do
             local random_port=$(shuf -i 1-65535 -n 1)  # 生成1-65535范围内的随机端口
             echo "自动生成的随机端口: $random_port"
-            if ! is_port_in_use "$random_port"; then
+            if ! is_port_occupied "$random_port"; then
               echo "使用生成的端口: $random_port"
               break
             fi
@@ -1359,7 +1364,7 @@ function get_port() {
         while : ; do
           local random_port=$(shuf -i 1-65535 -n 1)  # 生成1-65535范围内的随机端口
           echo "自动生成的随机端口: $random_port"
-          if ! is_port_in_use "$random_port"; then
+          if ! is_port_occupied "$random_port"; then
             echo "使用生成的端口: $random_port"
             break
           fi
@@ -1367,8 +1372,9 @@ function get_port() {
         break
       fi
     else  # 环境变量 PORT 有值时，使用它
-      if is_valid_port "$port"; then
-        if is_port_in_use "$port"; then
+      is_valid_port "$port"
+      if [ $? -eq 1 ]; then
+        if is_port_occupied "$port"; then
           echo "端口 $port 已被占用，请选择其他端口！"
           # 进入用户输入端口号的模式
           get_port  # 递归调用，要求用户重新输入端口号
