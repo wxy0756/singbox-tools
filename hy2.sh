@@ -1277,10 +1277,21 @@ EOF
 # 验证端口号是否有效
 function is_valid_port() {
   local port=$1
-  if [[ -n "$port" ]] && [[ "$port" =~ ^[1-9][0-9]{0,4}$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; then
-    return 0   # ✔ 合法
+  # 不输出任何内容，确保不会污染 stdout
+  if [[ "$port" =~ ^[1-9][0-9]{0,4}$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; then
+    return 0   # 合法
   else
-    return 1   # ❌ 不合法
+    return 1   # 不合法
+  fi
+}
+
+function is_port_occupied() {
+  local port=$1
+  # 不输出任何内容
+  if lsof -i :$port &>/dev/null; then
+    return 0  # 已占用
+  else
+    return 1  # 未占用
   fi
 }
 
