@@ -585,7 +585,6 @@ generate_subscription_info() {
     # ① 通用订阅（V2RayN / SR / V2RayNG / NekoBox / Loon / Karing）
     _green "① 通用订阅（V2RayN / SR / V2RayNG / NekoBox / Loon / Karing）"
     _green "$base_url"
-    generate_qr "$base_url"
     display_qr_link "$base_url"
     _yellow "------------------------------------------------------------"
 
@@ -594,7 +593,6 @@ generate_subscription_info() {
     clash_sub="https://sublink.eooce.com/clash?config=${base_url}"
     _green "② Clash / Mihomo / Clash Verge 订阅："
     _green "$clash_sub"
-    generate_qr "$clash_sub"
     display_qr_link "$clash_sub"
     _yellow "------------------------------------------------------------"
 
@@ -603,7 +601,6 @@ generate_subscription_info() {
     singbox_sub="https://sublink.eooce.com/singbox?config=${base_url}"
     _green "③ Sing-box 订阅："
     _green "$singbox_sub"
-    generate_qr "$singbox_sub"
     display_qr_link "$singbox_sub"
     _yellow "------------------------------------------------------------"
 
@@ -612,7 +609,6 @@ generate_subscription_info() {
     surge_sub="https://sublink.eooce.com/surge?config=${base_url}"
     _green "④ Surge 订阅："
     _green "$surge_sub"
-    generate_qr "$surge_sub"
     display_qr_link "$surge_sub"
     _yellow "------------------------------------------------------------"
 
@@ -621,7 +617,6 @@ generate_subscription_info() {
     qx_sub="https://sublink.eooce.com/qx?config=${base_url}"
     _green "⑤ Quantumult X 订阅："
     _green "$qx_sub"
-    generate_qr "$qx_sub"
     display_qr_link "$qx_sub"
     _yellow "------------------------------------------------------------"
 
