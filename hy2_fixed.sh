@@ -53,6 +53,7 @@ _yellow() { echo -e "\e[1;33m$1\033[0m"; }
 _purple() { echo -e "\e[1;35m$1\033[0m"; }
 _skyblue() { echo -e "\e[1;36m$1\033[0m"; }
 _blue() { echo -e "\e[1;34m$1\033[0m"; }
+_err() {_red "[错误] $1" >&2}
 
 # 安全输入
 reading() {
