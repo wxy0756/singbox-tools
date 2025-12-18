@@ -1186,6 +1186,7 @@ main_loop() {
 # 处理RANGE_PORTS环境变量
 handle_range_ports() {
     # 如果提供了RANGE_PORTS环境变量，则自动配置端口跳跃
+    echo "处理handle_range_ports函数"
     if [ -n "$RANGE_PORTS" ]; then
         # 解析端口范围
         is_valid_range_ports_format "$RANGE_PORTS"
