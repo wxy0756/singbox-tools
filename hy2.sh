@@ -1191,7 +1191,8 @@ handle_range_ports() {
     if [ -n "$RANGE_PORTS" ]; then
 
         echo "处理handle_range_ports函数,发现RANGE_PORTS不为空"
-        echo "处理handle_range_ports函数,发现RANGE_PORTS为: $RANGE_PORTS"
+        echo "处理handle_range_ports函数,发现RANGE_PORTS为: [$RANGE_PORTS]"
+
         # 解析端口范围
         is_valid_range_ports_format "$RANGE_PORTS"
         local return_value=$?
@@ -1435,19 +1436,20 @@ function is_valid_uuid() {
 
 # 获取RANGE_PORTS
 function get_range_ports() {
-  local range=$1
-  if [[ -n "$range" ]]; then  # 环境变量 RANGE_PORTS 有值时，直接使用
-    is_valid_range_ports "$range"
-    if [ $? -ne 0 ]; then   # ✔ 非 0 才是错误
-        echo "RANGE_PORTS的格式无效，应该是 start_port-end_port 的形式..."
-        exit 1
-    else
-        echo "$range"
-    fi
+  local range="$1"
 
-  else  # 环境变量 RANGE_PORTS 为空时，使用默认值
-    # 只输出实际的端口范围值，不输出信息文本
-    echo "$DEFAULT_RANGE_PORTS"
+  # 如果环境变量有值，直接验证
+  if [[ -n "$range" ]]; then
+    is_valid_range_ports "$range"
+    if [ $? -ne 0 ]; then
+      echo "RANGE_PORTS的格式无效，应该是 start_port-end_port 的形式，端口范围必须合法" >&2
+      exit 1
+    else
+      echo "$range"
+    fi
+  else
+    # 没有设置 RANGE_PORTS，则保持为空
+    echo ""
   fi
 }
 
