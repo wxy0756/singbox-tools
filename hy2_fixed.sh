@@ -36,6 +36,8 @@ VERSION="v2.0-final"
 work_dir="/etc/sing-box"
 config_dir="${work_dir}/config.json"
 sub_file="${work_dir}/sub.txt"
+sub_port_file="/etc/sing-box/sub.port"
+
 
 DEFAULT_UUID=$(cat /proc/sys/kernel/random/uuid)
 
@@ -601,21 +603,69 @@ generate_subscription_info() {
 }
 
 # ======================================================================
-# Nginx 订阅服务
+# Nginx 订阅服务（自动检测冲突、订阅端口持久化、自动修复）
 # ======================================================================
 add_nginx_conf() {
 
-    ! command_exists nginx && { _red "未安装 Nginx，跳过订阅服务"; return; }
+    if ! command_exists nginx; then
+        _red "未安装 Nginx，跳过订阅服务"
+        return
+    fi
 
-    systemctl stop nginx 2>/dev/null
+    mkdir -p /etc/nginx/conf.d
 
+    # -------------------------------
+    # 订阅端口持久化（确保订阅地址永不变）
+    # -------------------------------
+    sub_port_file="/etc/sing-box/sub.port"
+
+    if [[ -f "$sub_port_file" ]]; then
+        # 第二次运行及以后 → 使用记录端口
+        nginx_port=$(cat "$sub_port_file")
+        _green "订阅端口从记录加载：$nginx_port"
+    else
+        # 第一次运行 → 检查端口是否冲突
+        desired_port="$nginx_port"
+        actual_port="$desired_port"
+
+        if lsof -i:${desired_port} >/dev/null 2>&1; then
+            _yellow "订阅端口 $desired_port 被占用，首次自动分配新端口..."
+
+            # 自动寻找下一个可用端口（不会破坏系统）
+            for p in $(seq $((desired_port+1)) 65000); do
+                if ! lsof -i:${p} >/dev/null 2>&1; then
+                    actual_port="$p"
+                    _green "订阅端口自动设为：$actual_port"
+                    break
+                fi
+            done
+        fi
+
+        nginx_port="$actual_port"
+
+        # 第一次写入端口记录 → 确保此后永不改变
+        echo "$nginx_port" > "$sub_port_file"
+        _green "订阅端口已写入记录：$nginx_port"
+    fi
+
+    # -------------------------------
+    # 删除旧的 singbox_sub.conf（无损）
+    # -------------------------------
+    rm -f /etc/nginx/conf.d/singbox_sub.conf
+
+    # -------------------------------
+    # 创建全新且无冲突的订阅 server 配置
+    # 使用唯一 server_name sb_sub.local 避免冲突
+    # -------------------------------
 cat > /etc/nginx/conf.d/singbox_sub.conf <<EOF
 server {
     listen $nginx_port;
     listen [::]:$nginx_port;
-    server_name _;
 
-    add_header Cache-Control "no-cache";
+    # 避免与其它 server_name "_" 冲突
+    server_name sb_sub.local;
+
+    add_header Cache-Control "no-cache, no-store, must-revalidate";
     add_header Pragma "no-cache";
     add_header Expires "0";
 
@@ -630,15 +680,29 @@ server {
 }
 EOF
 
-    # 主 nginx.conf 检查是否有 include conf.d
+    # -------------------------------
+    # 自动修复 nginx.conf 里的 include
+    # -------------------------------
     if [[ -f /etc/nginx/nginx.conf ]]; then
         if ! grep -q "conf.d/\*\.conf" /etc/nginx/nginx.conf; then
             sed -i '/http {/a\    include /etc/nginx/conf.d/*.conf;' /etc/nginx/nginx.conf
+            _yellow "修复：已自动补全 nginx.conf 中的 include /etc/nginx/conf.d/*.conf"
         fi
     fi
 
-    nginx -t && systemctl restart nginx && _green "订阅服务已启动（端口：$nginx_port）"
+    # -------------------------------
+    # 检查语法 & 重启 nginx
+    # -------------------------------
+    nginx -t >/dev/null 2>&1
+    if [[ $? -ne 0 ]]; then
+        _red "Nginx 配置测试失败，请检查 /etc/nginx/conf.d/singbox_sub.conf"
+        return
+    fi
+
+    systemctl restart nginx
+    _green "订阅服务已成功启动（订阅端口：$nginx_port）"
 }
+
 
 # ======================================================================
 # Sing-box 服务管理（systemd / openrc 兼容）
@@ -908,25 +972,25 @@ menu() {
     echo ""
 
     # 服务状态
-    sb_status=$(systemctl is-active sing-box >/dev/null 2>&1 && echo "${green}运行中${re}" || echo "${red}未运行${re}")
-    ng_status=$(systemctl is-active nginx >/dev/null 2>&1 && echo "${green}运行中${re}" || echo "${red}未运行${re}")
+    sb_status=$(systemctl is-active sing-box >/dev/null 2>&1 && echo "${_green}运行中${re}" || echo "${_red}未运行${re}")
+    ng_status=$(systemctl is-active nginx >/dev/null 2>&1 && echo "${_green}运行中${re}" || echo "${_red}未运行${re}")
 
     echo -e " Sing-box 状态：$sb_status"
     echo -e " Nginx 状态：   $ng_status"
     echo ""
 
-    echo -e " ${green}1.${re} 安装 Sing-box (HY2)"
-    echo -e " ${red}2.${re} 卸载 Sing-box"
+    echo -e " ${_green}1.${re} 安装 Sing-box (HY2)"
+    echo -e " ${_red}2.${re} 卸载 Sing-box"
     echo "----------------------------------------"
-    echo -e " ${green}3.${re} 管理 Sing-box 服务"
-    echo -e " ${green}4.${re} 查看节点信息"
+    echo -e " ${_green}3.${re} 管理 Sing-box 服务"
+    echo -e " ${_green}4.${re} 查看节点信息"
     echo "----------------------------------------"
-    echo -e " ${green}5.${re} 修改节点配置"
-    echo -e " ${green}6.${re} 管理订阅服务"
+    echo -e " ${_green}5.${re} 修改节点配置"
+    echo -e " ${_green}6.${re} 管理订阅服务"
     echo "----------------------------------------"
-    echo -e " ${purple}7.${re} 内置 SSH 工具箱"
+    echo -e " ${_purple}7.${re} 内置 SSH 工具箱"
     echo "----------------------------------------"
-    echo -e " ${red}0.${re} 退出脚本"
+    echo -e " ${_red}0.${re} 退出脚本"
     echo "----------------------------------------"
     echo ""
 
