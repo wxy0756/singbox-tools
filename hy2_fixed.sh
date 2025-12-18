@@ -47,6 +47,7 @@ DEFAULT_RANGE_PORTS=""
 re="\033[0m"; red="\033[1;91m"; green="\e[1;32m"; yellow="\e[1;33m"
 purple="\e[1;35m"; skyblue="\e[1;36m"; blue="\e[1;34m"
 
+_white() { echo -e "\033[1;37m$1\033[0m"}
 _red() { echo -e "\e[1;91m$1\033[0m"; }
 _green() { echo -e "\e[1;32m$1\033[0m"; }
 _yellow() { echo -e "\e[1;33m$1\033[0m"; }
@@ -306,10 +307,9 @@ configure_port_jump() {
 # ======================================================================
 # 安装 Sing-box（下载、解压、安装、生成 config.json）
 # ======================================================================
-
 install_singbox() {
     clear
-    _purple "正在安装 Sing-box，请稍候..."
+    _purple "正在开始准备 Sing-box，请稍候..."
 
     # -------------------------------
     # 检测 CPU 架构
@@ -322,7 +322,7 @@ install_singbox() {
         i386|i686)ARCH="i386"  ;;
         riscv64)  ARCH="riscv64" ;;
         mips64el) ARCH="mips64le" ;;
-        *) _red "不支持的架构: $ARCH"; exit 1 ;;
+        *) _err "不支持的架构: $ARCH" ;;
     esac
 
     FILE="sing-box-${SINGBOX_VERSION}-linux-${ARCH}.tar.gz"
@@ -331,16 +331,15 @@ install_singbox() {
     mkdir -p "$work_dir"
 
     _yellow "下载 Sing-box: $URL"
-    curl -L -o "$FILE" "$URL" || { _red "下载失败"; exit 1; }
+    curl -L -o "$FILE" "$URL" || { _err "下载失败"; exit 1; }
 
     _yellow "解压..."
-    tar -xzf "$FILE" || { _red "解压失败"; exit 1; }
+    tar -xzf "$FILE" || { _err "解压失败"; exit 1; }
     rm -f "$FILE"
 
     extracted=$(find . -maxdepth 1 -type d -name "sing-box-*")
     extracted=$(echo "$extracted" | head -n 1)
-
-    [[ -z "$extracted" ]] && { _red "解压目录未找到"; exit 1; }
+    [[ -z "$extracted" ]] && { _err "解压目录未找到"; exit 1; }
 
     cd "$extracted"
     mv sing-box "${work_dir}/sing-box"
@@ -350,44 +349,66 @@ install_singbox() {
     _green "Sing-box 安装完成"
 
     # -------------------------------------------------------
-    # 解析运行模式（环境变量 ≠ 空 → 非交互式自动模式）
+    # 自动识别运行模式
     # -------------------------------------------------------
     is_interactive_mode
     if [[ $? -eq 1 ]]; then
         not_interactive=1
-        _green "当前运行模式：非交互式（自动安装）"
+        _white "当前运行模式：非交互式（自动安装）"
     else
         not_interactive=0
-        _green "当前运行模式：交互式"
+        _white "当前运行模式：交互式"
     fi
 
     # -------------------------------------------------------
-    # 获取 PORT / UUID / RANGE_PORTS（均已自动无污染）
+    # 获取 PORT / UUID / RANGE_PORTS
     # -------------------------------------------------------
-
     PORT=$(get_port "$PORT" "$not_interactive")
-    _green "HY2 主端口：$PORT"
+    _white "HY2 主端口：$PORT"
 
     UUID=$(get_uuid "$UUID" "$not_interactive")
-    _green "UUID：$UUID"
+    _white "UUID：$UUID"
 
-    RANGE_PORTS=$(get_range_ports "$RANGE_PORTS")
-    [[ -n "$RANGE_PORTS" ]] && _green "跳跃端口范围：$RANGE_PORTS"
-
-    # password = UUID（你的需求）
     HY2_PASSWORD="$UUID"
 
-    # 订阅端口 = PORT + 1
+    RANGE_PORTS=$(get_range_ports "$RANGE_PORTS")
+    [[ -n "$RANGE_PORTS" ]] && _green "启用端口跳跃：$RANGE_PORTS"
+
     nginx_port=$((PORT + 1))
     export nginx_port
-    _green "订阅端口（自动设定）：$nginx_port"
-
-    # 定义 hy2_port 值（修复：不能留空）
     hy2_port=$PORT
-    export hy2_port
+
+    allow_port "${PORT}/udp"
 
     # -------------------------------------------------------
-    # 生成 TLS 自签证书（无交互）
+    # 自动检测 IPv4 / IPv6 并构建 DNS 配置
+    # -------------------------------------------------------
+    ipv4_ok=false
+    ipv6_ok=false
+
+    ping -4 -c1 -W1 8.8.8.8 >/dev/null 2>&1 && ipv4_ok=true
+    ping -6 -c1 -W1 2001:4860:4860::8888 >/dev/null 2>&1 && ipv6_ok=true
+
+    dns_servers=()
+    $ipv4_ok && dns_servers+=("\"8.8.8.8\"")
+    $ipv6_ok && dns_servers+=("\"2001:4860:4860::8888\"")
+
+    # fallback：无网络也能跑
+    [[ ${#dns_servers[@]} -eq 0 ]] && dns_servers+=("\"8.8.8.8\"")
+
+    if $ipv4_ok && $ipv6_ok; then
+        dns_strategy="prefer_ipv4"
+    elif $ipv4_ok; then
+        dns_strategy="prefer_ipv4"
+    else
+        dns_strategy="prefer_ipv6"
+    fi
+
+    _white "DNS 服务器：$(printf "%s " "${dns_servers[@]}")"
+    _white "DNS 策略：$dns_strategy"
+
+    # -------------------------------------------------------
+    # 生成自签证书
     # -------------------------------------------------------
     openssl ecparam -genkey -name prime256v1 -out "${work_dir}/private.key"
     openssl req -x509 -new -nodes \
@@ -396,13 +417,8 @@ install_singbox() {
         -subj "/C=US/ST=CA/O=bing.com/CN=bing.com" \
         -out "${work_dir}/cert.pem"
 
-    allow_port "${PORT}/udp"
-
-    # 检测 DNS 优先策略
-    dns_strategy=$(ping -c1 -W1 8.8.8.8 >/dev/null 2>&1 && echo "prefer_ipv4" || echo "prefer_ipv6")
-
     # -------------------------------------------------------
-    # 生成 config.json
+    # 写入 config.json（包含 IPv6 + DNS 自动适配）
     # -------------------------------------------------------
 cat > "$config_dir" <<EOF
 {
@@ -414,8 +430,9 @@ cat > "$config_dir" <<EOF
   },
   "dns": {
     "servers": [
-      { "tag": "local", "address": "local", "strategy": "$dns_strategy" }
-    ]
+      $(IFS=,; echo "${dns_servers[*]}")
+    ],
+    "strategy": "$dns_strategy"
   },
   "ntp": {
     "enabled": true,
@@ -426,7 +443,7 @@ cat > "$config_dir" <<EOF
   "inbounds": [
     {
       "type": "hysteria2",
-      "tag": "hysteria2",
+      "tag": "hy2",
       "listen": "::",
       "listen_port": $hy2_port,
       "users": [
@@ -453,7 +470,41 @@ cat > "$config_dir" <<EOF
 EOF
 
     _green "配置文件已生成：$config_dir"
+
+    # -------------------------------------------------------
+    # 安装 systemd 服务
+    # -------------------------------------------------------
+    cat > /etc/systemd/system/sing-box.service <<EOF
+[Unit]
+Description=Sing-box Service
+After=network.target
+
+[Service]
+ExecStart=${work_dir}/sing-box run -c ${config_dir}
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable --now sing-box
+    systemctl restart sing-box
+
+    _green "Sing-box 服务已启动"
+
+    # -------------------------------------------------------
+    # 正确位置：端口跳跃必须放在 service 启动之后
+    # -------------------------------------------------------
+    if [[ -n "$RANGE_PORTS" ]]; then
+        _yellow "正在配置端口跳跃：$RANGE_PORTS"
+        configure_port_jump "$RANGE_PORTS"
+        systemctl restart sing-box
+        _green "端口跳跃已配置完成"
+    fi
 }
+
+
 # ======================================================================
 # 创建 systemd 服务
 # ======================================================================
@@ -580,8 +631,8 @@ generate_subscription_info() {
     _blue "============================================================"
 
     echo
-    _red "⚠ 温馨提示：部分客户端需要关闭 TLS 校验 / 允许 Insecure"
-    _red "  请在 V2RayN / Shadowrocket / Nekobox / Karing 等中启用「跳过证书验证」"
+    _skyblue " 温馨提示：部分客户端需要关闭 TLS 校验 / 允许 Insecure"
+    _skyblue "  请在 V2RayN / Shadowrocket / Nekobox / Karing 等中启用「跳过证书验证」"
 
     # ------------------------
     # ① 通用订阅
@@ -695,7 +746,7 @@ quick_install() {
     install_singbox
     start_service_after_finish_sb
 
-    _green "非交互式安装已完成！"
+    _white "非交互式安装已完成！"
 }
 
 
