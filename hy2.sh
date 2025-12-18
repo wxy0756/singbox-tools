@@ -1451,12 +1451,12 @@ function get_range_ports() {
       echo "RANGE_PORTS的格式无效，应该是 start_port-end_port 的形式，且端口号必须在1-65535之间，且 start_port <= end_port!" >&2
       exit 1
     else
-        echo "使用环境变量中的RANGE_PORTS: $range"
+        # 只输出实际的端口范围值，不输出信息文本
         echo "$range"
     fi
 
   else  # 环境变量 RANGE_PORTS 为空时，使用默认值
-    echo "RANGE_PORTS为空，使用默认值: $DEFAULT_RANGE_PORTS"
+    # 只输出实际的端口范围值，不输出信息文本
     echo "$DEFAULT_RANGE_PORTS"
   fi
 }
