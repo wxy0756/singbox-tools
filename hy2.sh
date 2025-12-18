@@ -1292,6 +1292,7 @@ function is_port_in_use() {
 function is_valid_range_ports() {
   local range=$1
   echo "检查RANGE_PORTS格式..."
+  echo  "range_ports=$range"
   is_valid_range_ports_format "$range"
   if [ $? -eq 1 ]; then
     start_port=${BASH_REMATCH[1]}
