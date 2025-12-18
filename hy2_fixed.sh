@@ -52,6 +52,25 @@ _yellow(){ echo -e "\e[1;33m$1\033[0m"; }
 _purple(){ echo -e "\e[1;35m$1\033[0m"; }
 _skyblue(){ echo -e "\e[1;36m$1\033[0m"; }
 _blue(){ echo -e "\e[1;34m$1\033[0m"; }
+_brown() { echo -e "\033[0;33m$1\033[0m"; }
+
+#彩虹色
+_gradient() {
+    local text="$1"
+    local colors=(196 202 208 214 220 190 82 46 51 39 33 99 129 163)  # 彩虹调色板
+    local i=0
+    local len=${#colors[@]}
+
+    for (( n=0; n<${#text}; n++ )); do
+        local c=${text:n:1}
+        printf "\033[38;5;${colors[i]}m%s\033[0m" "$c"
+        i=$(( (i+1) % len ))
+    done
+    echo
+}
+
+
+
 
 _err() { _red "[错误] $1" >&2; }
 
@@ -738,10 +757,10 @@ manage_singbox() {
     clear
     _green "=== Sing-box 服务管理 ==="
     echo ""
-    echo -e " ${green}1.${re} 启动 Sing-box"
-    echo -e " ${green}2.${re} 停止 Sing-box"
-    echo -e " ${green}3.${re} 重启 Sing-box"
-    echo -e " ${purple}0.${re} 返回"
+    echo -e " ${_green}1.${re} 启动 Sing-box"
+    echo -e " ${_green}2.${re} 停止 Sing-box"
+    echo -e " ${_green}3.${re} 重启 Sing-box"
+    echo -e " ${_purple}0.${re} 返回"
     echo ""
 
     read -rp "请输入选择：" m
@@ -762,10 +781,10 @@ disable_open_sub() {
     clear
     _green "=== 管理订阅服务 ==="
     echo ""
-    echo -e " ${green}1.${re} 关闭订阅服务(Nginx)"
-    echo -e " ${green}2.${re} 启用订阅服务(Nginx)"
-    echo -e " ${green}3.${re} 修改订阅端口"
-    echo -e " ${purple}0.${re} 返回"
+    echo -e " ${_green}1.${re} 关闭订阅服务(Nginx)"
+    echo -e " ${_green}2.${re} 启用订阅服务(Nginx)"
+    echo -e " ${_green}3.${re} 修改订阅端口"
+    echo -e " ${_purple}0.${re} 返回"
     echo ""
 
     read -rp "请输入选择:" s
@@ -819,12 +838,12 @@ change_config() {
     clear
     _green "=== 修改节点配置 ==="
     echo ""
-    echo -e " ${green}1.${re} 修改主端口(HY2 listen_port)"
-    echo -e " ${green}2.${re} 修改 UUID（密码）"
-    echo -e " ${green}3.${re} 修改节点名称（仅订阅展示）"
-    echo -e " ${green}4.${re} 添加跳跃端口"
-    echo -e " ${green}5.${re} 删除跳跃端口"
-    echo -e " ${purple}0.${re} 返回"
+    echo -e " ${_green}1.${re} 修改主端口(HY2 listen_port)"
+    echo -e " ${_green}2.${re} 修改 UUID（密码）"
+    echo -e " ${_green}3.${re} 修改节点名称（仅订阅展示）"
+    echo -e " ${_green}4.${re} 添加跳跃端口"
+    echo -e " ${_green}5.${re} 删除跳跃端口"
+    echo -e " ${_purple}0.${re} 返回"
     echo ""
 
     read -rp "请输入选项：" choice
@@ -965,13 +984,20 @@ quick_install() {
 menu() {
     clear
     _blue "===================================================="
-    _blue "        Sing-box Hysteria2 管理脚本"
-    _blue "        作者：$AUTHOR"
-    _blue "        版本：$VERSION"
+
+    # 🌈 全彩渐变标题
+    _gradient "        Sing-box Hysteria2 管理脚本"
+
+    # 作者（绿色）
+    _green   "        作者：$AUTHOR"
+
+    # 版本（棕色）
+    _brown   "        版本：$VERSION"
+
     _blue "===================================================="
     echo ""
 
-    # 服务状态（彩色显示）
+    # 服务状态（彩色）
     if systemctl is-active sing-box >/dev/null 2>&1; then
         sb_status="$(_green '运行中')"
     else
