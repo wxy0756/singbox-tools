@@ -726,7 +726,8 @@ EOF
 # ======================================================================
 change_hy2_port() {
 
-    read -rp "请输入新的 HY2 主端口：" new_port
+
+    read -rp "$(red_input "请输入新的 HY2 主端口：")" new_port
 
     # ------------------------------
     # 基础端口校验
@@ -848,8 +849,7 @@ EOF
 change_uuid() {
 
     echo ""
-    yellow "提示：按回车将自动生成新的 UUID"
-    read -rp "请输入新的 UUID（回车自动生成）： " new_uuid
+    read -rp "$(red_input "请输入新的 UUID（回车自动生成）：")" new_uuid
 
     # ---------------------------------------------------------------
     # 1. 如果用户直接按回车 → 自动生成新的 UUID
@@ -966,7 +966,7 @@ EOF
 # ======================================================================
 change_node_name() {
 
-    read -rp "请输入新的节点名称：" new_name
+    read -rp "$(red_input "请输入新的节点名称：")" new_name
 
     # 保存与编码
     NEW_NAME="$new_name"
@@ -1926,11 +1926,11 @@ change_config() {
             2) change_uuid ;;
             3) change_node_name ;;
             4)
-                read -rp "请输入跳跃端口起始值：" jmin
-                read -rp "请输入跳跃端口结束值：" jmax
+                read -rp "$(red_input "请输入跳跃端口起始值：")" jmin
+                read -rp "$(red_input "请输入跳跃端口结束值：")" jmax
 
                 if ! is_valid_range "${jmin}-${jmax}"; then
-                    red "格式无效（必须为 10000-20000 这种格式）"
+                    red "格式无效（必须为 1-65535 这种格式）"
                 else
                     configure_port_jump "$jmin" "$jmax"
                 fi
