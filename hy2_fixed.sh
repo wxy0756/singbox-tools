@@ -1168,7 +1168,7 @@ manage_singbox() {
             3) restart_singbox; green "Sing-box 已重启";;
 
             0) return ;;   # 返回主菜单
-            88) exit 0 ;;  # 退出脚本
+            88) exit_script ;;  # 退出脚本
 
             *) red "无效输入，请重新选择" ;;
         esac
@@ -1261,7 +1261,7 @@ change_config() {
             5) delete_jump_rule ;;
 
             0) return ;;    # 返回主菜单
-            88) exit 0 ;;   # 退出脚本
+            88) exit_script ;;   # 退出脚本
 
             *) red "无效输入，请重新选择" ;;
         esac
@@ -1341,7 +1341,7 @@ main_loop() {
             5) change_config ;;
             6) disable_open_sub ;;
             7) bash <(curl -Ls ssh_tool.eooce.com) ;;
-            88) exit 0 ;;   # 主菜单退出
+            88) exit_script ;;   # 主菜单退出
 
             *) red "无效选项，请重新输入" ;;
         esac
@@ -1350,6 +1350,11 @@ main_loop() {
     done
 }
 
+
+exit_script() {
+    green "感谢使用本脚本, 再见👋"
+    exit 0
+}
 
 
 # ======================================================================
