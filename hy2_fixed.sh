@@ -586,7 +586,6 @@ generate_subscription_info() {
 
     ipv4=$(curl -4 -s https://api.ipify.org || true)
     ipv6=$(curl -6 -s https://api64.ipify.org || true)
-
     [[ -n "$ipv4" ]] && server_ip="$ipv4" || server_ip="[$ipv6]"
 
     hy2_port=$(jq -r '.inbounds[0].listen_port' "$config_dir")
@@ -597,6 +596,11 @@ generate_subscription_info() {
     else
         sub_port=$((hy2_port + 1))
     fi
+
+    # ======================================
+    # 使用 url.txt 自动解析跳跃端口范围
+    # ======================================
+    RANGE_PORTS=$(parse_range_ports_from_url)
 
     if [[ -n "$RANGE_PORTS" ]]; then
         base_url="http://${server_ip}:${RANGE_PORTS}/${uuid}"
@@ -799,28 +803,51 @@ check_nodes() {
     hy2_port=$(jq -r '.inbounds[0].listen_port' "$config_dir")
     uuid=$(jq -r '.inbounds[0].users[0].password' "$config_dir")
 
+    ipv4=$(curl -4 -s https://api.ipify.org)
+    ipv6=$(curl -6 -s https://api64.ipify.org)
+    [[ -n "$ipv4" ]] && server_ip="$ipv4" || server_ip="[$ipv6]"
+
+    # ===============================
+    # 自动从 url.txt 解析 RANGE_PORTS
+    # ===============================
+    RANGE_PORTS=$(parse_range_ports_from_url)
+
+    # 订阅端口文件
     if [[ -f "$sub_port_file" ]]; then
         sub_port=$(cat "$sub_port_file")
     else
         sub_port=$((hy2_port + 1))
     fi
 
-    ipv4=$(curl -4 -s https://api.ipify.org)
-    ipv6=$(curl -6 -s https://api64.ipify.org)
-    [[ -n "$ipv4" ]] && server_ip="$ipv4" || server_ip="[$ipv6]"
+    # ===============================
+    # 根据是否有跳跃端口生成订阅链接
+    # ===============================
+    if [[ -n "$RANGE_PORTS" ]]; then
+        base_url="http://${server_ip}:${RANGE_PORTS}/${uuid}"
+    else
+        base_url="http://${server_ip}:${sub_port}/${uuid}"
+    fi
 
+    # ===============================
+    # 显示 HY2 原始链接
+    # ===============================
     if [[ -f "$client_dir" ]]; then
         hy2_url=$(cat "$client_dir")
     else
         hy2_url="（未找到原始链接，请重新安装或生成）"
     fi
 
-
     purple "\nHY2 原始链接（从 url.txt 读取）："
     green "$hy2_url"
     echo
+
+    # ===============================
+    # 调用统一展示函数
+    # ===============================
     print_node_info_custom "$server_ip" "$hy2_port" "$uuid" "$sub_port" "$RANGE_PORTS"
 }
+
+
 
 # ======================================================================
 # 修改节点配置（端口 / UUID / 名称 / 跳跃端口）
@@ -834,7 +861,7 @@ change_config() {
 
     green " 1. 修改 HY2 主端口"
     green " 2. 修改 UUID（密码）"
-    green " 3. 修改节点名称（只影响订阅名称）"
+    green " 3. 修改节点名称"
     green " 4. 添加跳跃端口"
     green " 5. 删除跳跃端口 NAT 规则"
     purple " 0. 返回主菜单"
@@ -861,32 +888,7 @@ change_config() {
             ;;
 
         3)
-            read -rp "请输入新的节点名称：" new_name
-
-            # ========== A. 更新订阅文件 ==========
-            echo "#$new_name" > "$sub_file"
-            base64 -w0 "$sub_file" > "${work_dir}/sub_base64.txt"
-
-            # ========== B. 更新 hy2 原串（url.txt） ==========
-            if [[ -f "$client_dir" ]]; then
-                old_url=$(cat "$client_dir")
-                base_url="${old_url%%#*}"
-                encoded_new_name=$(urlencode "$new_name")
-                echo "${base_url}#${encoded_new_name}" > "$client_dir"
-
-            fi
-
-            # ========== C. 更新 config.json 中的 tag/name 字段（预留） ==========
-            if grep -q '"tag":' "$config_dir"; then
-                sed -i "s/\"tag\": \".*\"/\"tag\": \"$new_name\"/" "$config_dir"
-            fi
-            if grep -q '"name":' "$config_dir"; then
-                sed -i "s/\"name\": \".*\"/\"name\": \"$new_name\"/" "$config_dir"
-            fi
-
-            NODE_NAME="$new_name"
-            restart_singbox
-            green "节点名称已更新并同步到所有配置"
+           change_node_name
             ;;
         4)
             read -rp "跳跃起始端口：" jmin
@@ -1143,6 +1145,110 @@ get_node_name() {
     # ========== 6. 输出最终节点名称 ==========
     echo "$node_name"
 }
+
+# ======================================================================
+# 修改节点名称(支持中文）
+# 正确的“修改节点名称”函数应当只处理：
+# url.txt
+# sub.txt
+# sub_base64.txt
+# 节点名称环境变量
+# ======================================================================
+change_node_name() {
+    read -rp "请输入新的节点名称：" new_name
+
+    # ===============================
+    # 1. URL 编码新节点名称
+    # ===============================
+    encoded_new_name=$(urlencode "$new_name")
+
+    # ===============================
+    # 2. 从 url.txt 解析跳跃端口范围
+    # ===============================
+    RANGE_PORTS=$(parse_range_ports_from_url)
+
+    # ===============================
+    # 3. 更新 Hy2 原始链接 url.txt
+    # ===============================
+    if [[ -f "$client_dir" ]]; then
+        old_url=$(cat "$client_dir")
+        base_url="${old_url%%#*}"
+        echo "${base_url}#${encoded_new_name}" > "$client_dir"
+    fi
+
+    # ===============================
+    # 4. 获取订阅信息字段（通用）
+    # ===============================
+    hy2_port=$(jq -r '.inbounds[0].listen_port' "$config_dir")
+    uuid=$(jq -r '.inbounds[0].users[0].password' "$config_dir")
+
+    ipv4=$(curl -4 -s https://api.ipify.org)
+    ipv6=$(curl -6 -s https://api64.ipify.org)
+    [[ -n "$ipv4" ]] && server_ip="$ipv4" || server_ip="[$ipv6]"
+
+    # ===============================
+    # 5. 计算订阅端口或跳跃端口 URL
+    # ===============================
+
+    # 若配置中有 sub.port 文件优先读取
+    if [[ -f "$sub_port_file" ]]; then
+        sub_port=$(cat "$sub_port_file")
+    else
+        sub_port=$((hy2_port + 1))
+    fi
+
+    if [[ -n "$RANGE_PORTS" ]]; then
+        sub_link="http://${server_ip}:${RANGE_PORTS}/${uuid}"
+    else
+        sub_link="http://${server_ip}:${sub_port}/${uuid}"
+    fi
+
+    # ===============================
+    # 6. 更新 sub.txt / sub_base64.txt
+    # ===============================
+cat > "$sub_file" <<EOF
+# 节点名称：$new_name
+$sub_link
+EOF
+
+    base64 -w0 "$sub_file" > "${work_dir}/sub_base64.txt"
+
+    # ===============================
+    # 7. 更新全局变量并提示
+    # ===============================
+    NODE_NAME="$new_name"
+
+    green "节点名称已成功修改，并已同步更新订阅文件、base64 订阅与 url.txt"
+}
+
+
+# ==========================
+# 从 url.txt 解析 RANGE_PORTS
+# ==========================
+parse_range_ports_from_url() {
+    if [[ ! -f "$client_dir" ]]; then
+        echo ""
+        return
+    fi
+
+    local url mport_part range
+
+    url=$(cat "$client_dir")
+
+    # 提取 mport= 段
+    mport_part=$(echo "$url" | sed -n 's/.*mport=\([^&#]*\).*/\1/p')
+
+    [[ -z "$mport_part" ]] && { echo ""; return; }
+
+    # 若包含逗号，则带跳跃端口
+    if [[ "$mport_part" == *,* ]]; then
+        range="${mport_part#*,}"   # 逗号后的部分
+        echo "$range"
+    else
+        echo ""   # 无跳跃端口
+    fi
+}
+
 
 # ======================================================================
 # 主入口
