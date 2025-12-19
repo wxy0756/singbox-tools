@@ -334,22 +334,23 @@ handle_range_ports() {
 # ======================================================================
 # 安装 Sing-box 主流程（关键模块，带交互/自动分支）
 # ======================================================================
+# ======================================================================
+# 安装 Sing-box（自动/交互 + 配置生成 + systemd 注册 完整版）
+# ======================================================================
 install_singbox() {
     clear
     _purple "正在准备 Sing-box，请稍候..."
 
     mkdir -p "$work_dir"
 
-    # ------------------------------------------------------------------
-    # CPU 架构识别
-    # ------------------------------------------------------------------
+    # ---------------------- 检测 CPU 架构 ----------------------
     ARCH=$(uname -m)
     case "$ARCH" in
-        x86_64) ARCH="amd64" ;;
-        aarch64) ARCH="arm64" ;;
-        armv7l) ARCH="armv7" ;;
-        i386|i686) ARCH="i386" ;;
-        riscv64) ARCH="riscv64" ;;
+        x86_64)   ARCH="amd64" ;;
+        aarch64)  ARCH="arm64" ;;
+        armv7l)   ARCH="armv7" ;;
+        i386|i686)ARCH="i386" ;;
+        riscv64)  ARCH="riscv64" ;;
         mips64el) ARCH="mips64le" ;;
         *) _err "不支持的架构: $ARCH" ;;
     esac
@@ -357,73 +358,87 @@ install_singbox() {
     FILE="sing-box-${SINGBOX_VERSION}-linux-${ARCH}.tar.gz"
     URL="https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/${FILE}"
 
-    _yellow "下载 Sing-box：$URL"
+    _yellow "正在下载 Sing-box：$URL"
 
-    # 强化下载：失败自动退出
     curl -fSL --retry 3 --retry-delay 2 --connect-timeout 10 \
         -o "$FILE" "$URL" || { _err "下载失败"; exit 1; }
 
     _yellow "解压中..."
-    tar -xzf "$FILE" 2>/dev/null || { _err "解压失败"; exit 1; }
+    tar -xzf "$FILE" || { _err "解压失败"; exit 1; }
     rm -f "$FILE"
 
     extracted=$(find . -maxdepth 1 -type d -name "sing-box-*")
     extracted=$(echo "$extracted" | head -n 1)
-    [[ -z "$extracted" ]] && { _err "解压目录未找到"; exit 1; }
 
     mv "$extracted/sing-box" "$work_dir/sing-box"
     chmod +x "$work_dir/sing-box"
     rm -rf "$extracted"
 
-    _green "Sing-box 安装完成"
+    _green "Sing-box 已成功安装"
 
-    # ------------------------------------------------------------------
-    # 判断是否进入自动模式（核心修复）
-    # ------------------------------------------------------------------
+    # ---------------------- 判断自动 / 交互模式 ----------------------
     is_interactive_mode
     if [[ $? -eq 1 ]]; then
-        # 自动模式（环境变量已设置）
         not_interactive=1
-        _white "当前模式：自动安装（由环境变量触发）"
+        _white "当前模式：自动模式（由环境变量激活）"
     else
-        # 交互模式（从菜单进入，或无环境变量）
         not_interactive=0
-        _white "当前模式：交互安装（需要由用户输入）"
+        _white "当前模式：交互模式（需要用户输入）"
     fi
 
-    # ------------------------------------------------------------------
-    # 自动/交互模式：获取端口 / UUID / RANGE_PORTS
-    # ------------------------------------------------------------------
-    PORT=$(get_port "$PORT")
-    _white "HY2 主端口：$PORT"
+    # ---------------------- 自动模式 ----------------------
+    if [[ $not_interactive -eq 1 ]]; then
+        PORT=$(get_port "$PORT")
+        UUID=$(get_uuid "$UUID")
+        HY2_PASSWORD="$UUID"
 
-    UUID=$(get_uuid "$UUID")
-    HY2_PASSWORD="$UUID"
-    _white "UUID：$UUID"
+    # ---------------------- 交互模式：真正让用户输入 ----------------------
+    else
+        while true; do
+            read -rp "请输入 HY2 主端口（1-65535）：" USER_PORT
+            if is_valid_port "$USER_PORT" && ! is_port_occupied "$USER_PORT"; then
+                PORT="$USER_PORT"
+                break
+            else
+                _red "端口无效或已占用，请重新输入。"
+            fi
+        done
+
+        while true; do
+            read -rp "请输入 UUID（留空自动生成）：" USER_UUID
+            if [[ -z "$USER_UUID" ]]; then
+                UUID="$DEFAULT_UUID"
+                break
+            elif is_valid_uuid "$USER_UUID"; then
+                UUID="$USER_UUID"
+                break
+            else
+                _red "UUID 格式不正确，请重新输入。"
+            fi
+        done
+
+        HY2_PASSWORD="$UUID"
+    fi
+
+    _white "最终 HY2 端口：$PORT"
+    _white "最终 UUID：$UUID"
 
     RANGE_PORTS=$(get_range_ports "$RANGE_PORTS")
-    [[ -n "$RANGE_PORTS" ]] && _white "启用跳跃端口范围：$RANGE_PORTS"
+    [[ -n "$RANGE_PORTS" ]] && _green "启用跳跃端口 RANGE_PORTS：$RANGE_PORTS"
 
-    # 订阅服务端口（主端口 + 1）
     nginx_port=$((PORT + 1))
-    export nginx_port
     hy2_port="$PORT"
-
     allow_port "$PORT" udp
 
-    # ------------------------------------------------------------------
-    # DNS 自动探测：根据 IPv4/IPv6 可用性决定
-    # ------------------------------------------------------------------
+    # ---------------------- DNS 自动探测 ----------------------
     ipv4_ok=false
     ipv6_ok=false
-
-    ping -4 -c1 -W1 8.8.8.8 >/dev/null 2>&1 && ipv4_ok=true
+    ping -4 -c1 -W1 8.8.8.8  >/dev/null 2>&1 && ipv4_ok=true
     ping -6 -c1 -W1 2001:4860:4860::8888 >/dev/null 2>&1 && ipv6_ok=true
 
     dns_servers=()
     $ipv4_ok && dns_servers+=("\"8.8.8.8\"")
     $ipv6_ok && dns_servers+=("\"2001:4860:4860::8888\"")
-
     [[ ${#dns_servers[@]} -eq 0 ]] && dns_servers+=("\"8.8.8.8\"")
 
     if $ipv4_ok && $ipv6_ok; then
@@ -434,28 +449,22 @@ install_singbox() {
         dns_strategy="prefer_ipv6"
     fi
 
-    _white "DNS 服务器：${dns_servers[*]}"
-    _white "DNS 策略：$dns_strategy"
-
-    # ------------------------------------------------------------------
-    # TLS 证书生成（自签，用于 Hy2）
-    # ------------------------------------------------------------------
+    # ---------------------- 生成 TLS 自签证书 ----------------------
     openssl ecparam -genkey -name prime256v1 -out "${work_dir}/private.key"
     openssl req -x509 -new -nodes \
         -key "${work_dir}/private.key" \
         -sha256 -days 3650 \
         -subj "/C=US/ST=CA/O=bing.com/CN=bing.com" \
         -out "${work_dir}/cert.pem"
+
     # ==================================================================
-    # 生成 sing-box 配置文件（Hy2 + 自签证书 + IPv6 支持）
+    # 生成 config.json（完整保留 Hy2 功能，与你脚本完全兼容）
     # ==================================================================
 cat > "$config_dir" <<EOF
 {
   "log": {
-    "disabled": false,
     "level": "error",
-    "output": "$work_dir/sb.log",
-    "timestamp": true
+    "output": "$work_dir/sb.log"
   },
   "dns": {
     "servers": [
@@ -463,30 +472,20 @@ cat > "$config_dir" <<EOF
     ],
     "strategy": "$dns_strategy"
   },
-  "ntp": {
-    "enabled": true,
-    "server": "time.apple.com",
-    "server_port": 123,
-    "interval": "30m"
-  },
   "inbounds": [
     {
       "type": "hysteria2",
       "tag": "hy2",
       "listen": "::",
       "listen_port": $hy2_port,
-
       "users": [
         { "password": "$HY2_PASSWORD" }
       ],
-
       "ignore_client_bandwidth": false,
-
       "masquerade": "https://bing.com",
-
       "tls": {
         "enabled": true,
-        "alpn": ["h3"],
+        "alpn": [ "h3" ],
         "min_version": "1.3",
         "max_version": "1.3",
         "certificate_path": "$work_dir/cert.pem",
@@ -494,20 +493,16 @@ cat > "$config_dir" <<EOF
       }
     }
   ],
-
   "outbounds": [
-    { "type": "direct", "tag": "direct" },
-    { "type": "block", "tag": "block" }
-  ],
-
-  "route": { "final": "direct" }
+    { "type": "direct" }
+  ]
 }
 EOF
 
-    _green "配置文件已生成：$config_dir"
+    _green "配置文件已生成 → $config_dir"
 
     # ==================================================================
-    # 注册 systemd 服务（保证系统重启后自动启动）
+    # 写入 systemd 服务文件
     # ==================================================================
 cat > /etc/systemd/system/sing-box.service <<EOF
 [Unit]
@@ -515,9 +510,8 @@ Description=Sing-box Service
 After=network.target
 
 [Service]
-ExecStart=${work_dir}/sing-box run -c ${config_dir}
+ExecStart=$work_dir/sing-box run -c $config_dir
 Restart=on-failure
-User=root
 LimitNOFILE=1048576
 
 [Install]
@@ -525,11 +519,12 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    systemctl enable --now sing-box
+    systemctl enable sing-box
     systemctl restart sing-box
 
-    _green "Sing-box 服务已启动"
+    _green "Sing-box 服务已成功启动！"
 }
+
 
 # ======================================================================
 # URL encode，用于生成二维码链接（关键工具函数）
