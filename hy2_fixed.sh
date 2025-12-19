@@ -68,6 +68,10 @@ sub_port_file="/etc/sing-box/sub.port"
 # 默认 UUID（自动模式下使用）
 DEFAULT_UUID=$(cat /proc/sys/kernel/random/uuid)
 
+ensure_url_file() {
+    mkdir -p "$work_dir"
+    [[ -f "$client_dir" ]] || touch "$client_dir"
+}
 
 # ======================================================================
 # UI 颜色输出（保留你的风格）
@@ -111,6 +115,20 @@ command_exists() { command -v "$1" >/dev/null 2>&1; }
 # ======================================================================
 # ------------------------ 端口工具函数 -------------------------------
 # ======================================================================
+
+
+
+# ======================================================================
+# URL 编码 / 解码函数（必须位于脚本前部，否则会找不到）
+# ======================================================================
+urlencode() {
+    printf "%s" "$1" | jq -sRr @uri
+}
+
+urldecode() {
+    printf '%b' "${1//%/\\x}"
+}
+
 
 # 校验端口格式
 is_valid_port() { [[ "$1" =~ ^[0-9]+$ && "$1" -ge 1 && "$1" -le 65535 ]]; }
@@ -240,6 +258,8 @@ remove_nat_jump_rules() {
 # ======================================================================
 restore_url_without_jump() {
 
+    ensure_url_file
+
     [[ ! -f "$client_dir" ]] && {
         yellow "未找到 url.txt，跳过 URL 清理"
         return
@@ -366,6 +386,8 @@ configure_port_jump() {
     # ===============================
     # 4. 更新 url.txt 的 mport 字段
     # ===============================
+    ensure_url_file
+
     if [[ -f "$client_dir" ]]; then
         old_url=$(cat "$client_dir")
         node_tag="${old_url#*#}"     # 节点名称
@@ -493,6 +515,7 @@ change_hy2_port() {
     # ------------------------------
     # 3. 同步更新 url.txt 的端口 + mport 主端口
     # ------------------------------
+    ensure_url_file
     if [[ -f "$client_dir" ]]; then
         local old_url=$(cat "$client_dir")
         local node_tag="${old_url#*#}"    # 节点名称
@@ -576,6 +599,8 @@ change_uuid() {
         red "UUID 格式不正确，请重新输入"
         return
     fi
+
+    ensure_url_file
 
     local old_uuid
     old_uuid=$(jq -r '.inbounds[0].users[0].password' "$config_dir")
@@ -679,6 +704,7 @@ change_node_name() {
     NEW_NAME="$new_name"
     NEW_NAME_ENCODED=$(urlencode "$new_name")
 
+    ensure_url_file
     # ======================================================
     # 1. 修改 url.txt 中的节点标签（仅修改 #tag 而不动 URL 主体）
     # ======================================================
@@ -790,6 +816,7 @@ print_node_info_custom() {
     # ------------------------------------------------------
     # 写入 url.txt（保持节点信息输出一致性）
     # ------------------------------------------------------
+    ensure_url_file
     echo "$hy2_url" > "$client_dir"
 
     # 友好显示中文名
