@@ -913,8 +913,12 @@ change_config() {
 # 卸载 Sing-box（含订阅服务）
 # ======================================================================
 uninstall_singbox() {
-    read -rp "确认卸载 Sing-box？(y/n): " u
-    [[ "$u" != "y" ]] && { yellow "取消卸载"; return; }
+    read -rp "确认卸载 Sing-box？ [Y/n]（直接回车 = 同意卸载）: " u
+    u=${u:-y}   # 默认回车 = y
+    if [[ ! "$u" =~ ^[Yy]$ ]]; then
+        yellow "取消卸载"
+        return
+    fi
 
     stop_singbox
     systemctl disable sing-box >/dev/null 2>&1
@@ -931,9 +935,10 @@ uninstall_singbox() {
     fi
 
     # 是否卸载 Nginx
-    if command_exists nginx; then
-        read -rp "是否卸载 Nginx？(y/N): " delng
-        if [[ "$delng" =~ ^[Yy]$ ]]; then
+    read -rp "是否卸载 Nginx（Sing-box 已卸载后通常不再需要）？ [Y/n]（直接回车 = 同意卸载）: " delng
+    delng=${delng:-y}   # 默认回车 = y
+    if [[ "$delng" =~ ^[Yy]$ ]]; then
+
             if command_exists apt; then apt remove -y nginx nginx-core
             elif command_exists yum; then yum remove -y nginx
             elif command_exists dnf; then dnf remove -y nginx
