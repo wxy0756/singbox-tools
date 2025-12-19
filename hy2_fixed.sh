@@ -949,8 +949,8 @@ uninstall_singbox() {
     # 卸载 Nginx（默认回车 = y）
     if command_exists nginx; then
         echo
-        read -rp "是否卸载 Nginx（Sing-box 已卸载后通常不再需要）？ [Y/n]（直接回车 = 同意卸载）: " delng
-        delng=${delng:-y}
+        read -rp "是否卸载 Nginx（Sing-box 已卸载后通常不再需要）？ [Y/n]（直接回车 = 不同意卸载）: " delng
+        delng=${delng:-n}
 
         if [[ "$delng" =~ ^[Yy]$ ]]; then
             if command_exists apt; then
@@ -1087,6 +1087,14 @@ main_loop() {
 # -------------------------
 urlencode() {
     printf "%s" "$1" | jq -sRr @uri
+}
+
+
+# -------------------------
+# URL 解码函数（用于处理中文节点名称）
+# -------------------------
+urldecode() {
+    printf '%b' "${1//%/\\x}"
 }
 
 # ======================================================================
