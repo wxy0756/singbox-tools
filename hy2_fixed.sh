@@ -913,18 +913,21 @@ change_config() {
 # 卸载 Sing-box（含订阅服务）
 # ======================================================================
 uninstall_singbox() {
+    echo
     read -rp "确认卸载 Sing-box？ [Y/n]（直接回车 = 同意卸载）: " u
-    u=${u:-y}   # 默认回车 = y
+    u=${u:-y}   # 默认回车 = yes
     if [[ ! "$u" =~ ^[Yy]$ ]]; then
         yellow "取消卸载"
         return
     fi
 
+    # 停止 sing-box 服务并删除 systemd 配置
     stop_singbox
     systemctl disable sing-box >/dev/null 2>&1
     rm -f /etc/systemd/system/sing-box.service
     systemctl daemon-reload
 
+    # 删除配置目录
     rm -rf /etc/sing-box
     green "Sing-box 已卸载"
 
@@ -934,15 +937,21 @@ uninstall_singbox() {
         green "订阅服务配置已删除"
     fi
 
-    # 是否卸载 Nginx
-    read -rp "是否卸载 Nginx（Sing-box 已卸载后通常不再需要）？ [Y/n]（直接回车 = 同意卸载）: " delng
-    delng=${delng:-y}   # 默认回车 = y
-    if [[ "$delng" =~ ^[Yy]$ ]]; then
+    # 卸载 Nginx（默认回车 = y）
+    if command_exists nginx; then
+        echo
+        read -rp "是否卸载 Nginx（Sing-box 已卸载后通常不再需要）？ [Y/n]（直接回车 = 同意卸载）: " delng
+        delng=${delng:-y}
 
-            if command_exists apt; then apt remove -y nginx nginx-core
-            elif command_exists yum; then yum remove -y nginx
-            elif command_exists dnf; then dnf remove -y nginx
-            elif command_exists apk; then apk del nginx
+        if [[ "$delng" =~ ^[Yy]$ ]]; then
+            if command_exists apt; then
+                apt remove -y nginx nginx-core
+            elif command_exists yum; then
+                yum remove -y nginx
+            elif command_exists dnf; then
+                dnf remove -y nginx
+            elif command_exists apk; then
+                apk del nginx
             fi
             green "Nginx 已卸载"
         else
@@ -951,6 +960,7 @@ uninstall_singbox() {
         fi
     fi
 
+    echo
     green "卸载流程完成"
 }
 
