@@ -509,10 +509,12 @@ print_node_info_custom() {
     # 写入 Hy2 原始链接到 url.txt
     echo "$hy2_url" > "$client_dir"
 
-    # ========== ★★★ 新增：输出 hy2 原始链接 ★★★ ==========
-    purple "\nHY2 原始链接（可直接导入客户端）："
-    green  "$hy2_url"
-    generate_qr "$hy2_url"
+    # ========== ★★★ 新增：输出 hy2 （显示为中文） ★★★ ==========
+    decoded_name=$(urldecode "$encoded_name")
+    decoded_url="hysteria2://${uuid}@${server_ip}:${hy2_port}/?insecure=1&alpn=h3&obfs=none&mport=${mport_param}#${decoded_name}"
+
+    purple "\nHY2 原始链接（显示为中文）："
+    green "$decoded_url"
     yellow "=========================================================================================="
     
 
