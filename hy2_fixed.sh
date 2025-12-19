@@ -1611,13 +1611,12 @@ stop_singbox() {
 # 说明：
 #   - 自动与手动模式都支持（基于是否传入环境变量）
 #   - 自动创建目录 / 证书 / config.json
-#   - 不修改 sub.port（遵守你的规则）
+#   -这里面的配置仅仅兼容 Sing-box ≥ 1.12 的 DNS 格式
 # ======================================================================
 install_singbox() {
     clear
     purple "准备下载并安装 Sing-box..."
 
-    # 创建运行目录（防止 url.txt 等写入失败）
     mkdir -p "$work_dir"
 
     # -------------------- 检测 CPU 架构 --------------------
@@ -1653,30 +1652,18 @@ install_singbox() {
     green "Sing-box 已成功安装"
 
     # --------------------
-    # 判断自动或交互模式
+    # 判断模式（自动 or 交互）
     # --------------------
     is_interactive_mode
     if [[ $? -eq 1 ]]; then
         not_interactive=1
-        white "当前模式：自动模式（由环境变量触发）"
-    else
-        not_interactive=0
-        white "当前模式：交互模式（用户手动输入）"
-    fi
-
-    # ==================================================================
-    # 自动模式
-    # ==================================================================
-    if [[ $not_interactive -eq 1 ]]; then
+        white "当前模式：自动模式"
         PORT=$(get_port "$PORT")
         UUID=$(get_uuid "$UUID")
-        HY2_PASSWORD="$UUID"
-
-    # ==================================================================
-    # 交互模式
-    # ==================================================================
     else
-        # ---------- 输入主端口 ----------
+        not_interactive=0
+        white "当前模式：交互模式"
+
         while true; do
             read -rp "请输入 HY2 主端口：" USER_PORT
             if is_valid_port "$USER_PORT" && ! is_port_occupied "$USER_PORT"; then
@@ -1687,7 +1674,6 @@ install_singbox() {
             fi
         done
 
-        # ---------- 输入 UUID ----------
         while true; do
             read -rp "请输入 UUID（留空自动生成）：" USER_UUID
             if [[ -z "$USER_UUID" ]]; then
@@ -1700,64 +1686,51 @@ install_singbox() {
                 red "UUID 格式不正确，请重新输入"
             fi
         done
-
-        HY2_PASSWORD="$UUID"
     fi
 
-    white "最终 HY2 主端口：$PORT"
-    white "最终 UUID：$UUID"
-
-    RANGE_PORTS=$(get_range_ports "$RANGE_PORTS")
-    [[ -n "$RANGE_PORTS" ]] && green "启用跳跃端口范围：$RANGE_PORTS"
-
-    NODE_NAME=$(get_node_name)
+    HY2_PASSWORD="$UUID"
     hy2_port="$PORT"
 
-    allow_port "$PORT" udp
+    allow_port "$hy2_port" udp
 
     # ==================================================================
-    # 自动探测 DNS 设置
+    # 自动探测 DNS 设置（已完全兼容新版 Sing-box）
     # ==================================================================
     ipv4_ok=false
     ipv6_ok=false
-
-    ping -4 -c1 -W1 8.8.8.8   >/dev/null 2>&1 && ipv4_ok=true
+    ping -4 -c1 -W1 8.8.8.8 >/dev/null 2>&1 && ipv4_ok=true
     ping -6 -c1 -W1 2001:4860:4860::8888 >/dev/null 2>&1 && ipv6_ok=true
 
     dns_servers_json=""
-
     if $ipv4_ok && $ipv6_ok; then
         dns_servers_json='
-        {
-            "tag": "dns-google-ipv4",
-            "address": "8.8.8.8"
-        },
-        {
-            "tag": "dns-google-ipv6",
-            "address": "2001:4860:4860::8888"
-        }'
+      {
+        "tag": "dns-google-ipv4",
+        "address": "8.8.8.8"
+      },
+      {
+        "tag": "dns-google-ipv6",
+        "address": "2001:4860:4860::8888"
+      }'
     elif $ipv4_ok; then
         dns_servers_json='
-        {
-            "tag": "dns-google-ipv4",
-            "address": "8.8.8.8"
-        }'
+      {
+        "tag": "dns-google-ipv4",
+        "address": "8.8.8.8"
+      }'
     else
         dns_servers_json='
-        {
-            "tag": "dns-google-ipv6",
-            "address": "2001:4860:4860::8888"
-        }'
+      {
+        "tag": "dns-google-ipv6",
+        "address": "2001:4860:4860::8888"
+      }'
     fi
 
-    if $ipv4_ok && $ipv6_ok; then
-        dns_strategy="prefer_ipv4"
-    elif $ipv4_ok; then
+    if $ipv4_ok; then
         dns_strategy="prefer_ipv4"
     else
         dns_strategy="prefer_ipv6"
     fi
-
 
     # ==================================================================
     # 生成 TLS 密钥与证书
@@ -1769,13 +1742,15 @@ install_singbox() {
         -subj "/C=US/ST=CA/O=bing.com/CN=bing.com" \
         -out "${work_dir}/cert.pem"
 
-
     # ==================================================================
-    # 生成 config.json（保持原风格）
+    # 生成最终合法 JSON（不会报 jq 错误）
     # ==================================================================
 cat > "$config_dir" <<EOF
 {
-  "log": { "level": "error", "output": "$work_dir/sb.log" },
+  "log": {
+    "level": "error",
+    "output": "$work_dir/sb.log"
+  },
 
   "dns": {
     "servers": [
@@ -1814,9 +1789,8 @@ EOF
 
     green "配置文件已生成：$config_dir"
 
-
     # ==================================================================
-    # systemd 服务注册
+    # 注册 systemd 服务
     # ==================================================================
 cat > /etc/systemd/system/sing-box.service <<EOF
 [Unit]
