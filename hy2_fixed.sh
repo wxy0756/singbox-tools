@@ -501,7 +501,9 @@ print_node_info_custom() {
         mport_param="${hy2_port}"
     fi
 
-   hy2_url="hysteria2://${uuid}@${server_ip}:${hy2_port}/?insecure=1&alpn=h3&obfs=none&mport=${mport_param}#${NODE_NAME}"
+    encoded_name=$(urlencode "$NODE_NAME")
+    hy2_url="hysteria2://${uuid}@${server_ip}:${hy2_port}/?insecure=1&alpn=h3&obfs=none&mport=${mport_param}#${encoded_name}"
+
 
 
     # 写入 Hy2 原始链接到 url.txt
@@ -865,7 +867,11 @@ change_config() {
 
             # ========== B. 更新 hy2 原串（url.txt） ==========
             if [[ -f "$client_dir" ]]; then
-                sed -i "s/#.*/#$new_name/" "$client_dir"
+                old_url=$(cat "$client_dir")
+                base_url="${old_url%%#*}"
+                encoded_new_name=$(urlencode "$new_name")
+                echo "${base_url}#${encoded_new_name}" > "$client_dir"
+
             fi
 
             # ========== C. 更新 config.json 中的 tag/name 字段（预留） ==========
@@ -876,6 +882,7 @@ change_config() {
                 sed -i "s/\"name\": \".*\"/\"name\": \"$new_name\"/" "$config_dir"
             fi
 
+            NODE_NAME="$new_name"
             restart_singbox
             green "节点名称已更新并同步到所有配置"
             ;;
@@ -1072,6 +1079,13 @@ main_loop() {
     done
 }
 
+
+# -------------------------
+# URL 编码函数（用于处理中文节点名称）
+# -------------------------
+urlencode() {
+    printf "%s" "$1" | jq -sRr @uri
+}
 
 # ======================================================================
 # 节点名称
