@@ -16,7 +16,7 @@ export LANG=en_US.UTF-8
 # 基本信息
 # ======================================================================
 AUTHOR="littleDoraemon"
-VERSION="v1.0.3"
+VERSION="v1.0.4"
 SINGBOX_VERSION="1.12.13"
 
 # ======================================================================
@@ -586,7 +586,7 @@ check_nodes() {
 
     # 1. 基础节点名（不含跳跃端口）
     BASE_NAME=$(get_node_name)
-    red "节点名称=$BASE_NAME\n"
+    green "节点名称=$BASE_NAME\n"
 
     # 2. 防御性解码（确保是可读态）
     BASE_NAME_DECODED=$(urldecode "$(urlencode "$BASE_NAME")")
