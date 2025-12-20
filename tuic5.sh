@@ -643,6 +643,7 @@ check_nodes() {
     # ======================================================
 
     purple "\nTUIC 原始链接（节点名称：${DECODED_NAME}）"
+    sleep 100
 
     if $ip4_ok; then
         yellow "===== IPv4 TUIC（推荐） ====="
