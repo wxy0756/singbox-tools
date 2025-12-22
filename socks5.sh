@@ -5,12 +5,15 @@
 # - 多架构
 # - 自动重启（当前socks5服务支持系统重启后自动拉起socks5服务）
 # 用法如下：
-# 安装：
+# 1、安装：
 #   PORT=31000 USERNAME=oneforall PASSWORD=allforone bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/socks5.sh)
 #   
-# 卸载：
+# 2、卸载：
 #   bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/socks5.sh) uninstall
 #
+# 3、命令行中如何测试socks5串通不通？？只要选下方的命令执行，成功返回ip就代表成功，不用在意是否返回的时候什么ip，比如你明明是ipv6环境的服务器确返回了一个ipv4.这种情况其实也是对的。
+#  curl --socks5-hostname "ipv4:端口号"  -U 用户名:密码 http://ip.sb
+#  curl -6 --socks5-hostname "[ipv6]:端口号" -U 用户名:密码 http://ip.sb
 #
 
 
