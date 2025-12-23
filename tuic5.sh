@@ -16,7 +16,7 @@ export LANG=en_US.UTF-8
 # 基本信息
 # ======================================================================
 AUTHOR="littleDoraemon"
-VERSION="v1.0.5"
+VERSION="v1.0.6"
 SINGBOX_VERSION="1.12.13"
 
 # ======================================================================
@@ -465,8 +465,51 @@ install_singbox() {
     if [[ $? -eq 1 ]]; then
         # 自动模式
         white "当前模式：自动模式"
-        PORT=$(get_port "$PORT")
-        UUID=$(get_uuid "$UUID")
+
+        # 先尝试使用传入的 PORT
+        if is_valid_port "$PORT" && ! is_port_occupied "$PORT"; then
+            PORT="$PORT"
+        else
+            yellow "检测到 PORT 无效或已被占用，切换为手动输入端口"
+            while true; do
+                read -rp "$(red_input "请输入 TUIC 主端口（UDP）：")" USER_PORT
+                if is_valid_port "$USER_PORT" && ! is_port_occupied "$USER_PORT"; then
+                    PORT="$USER_PORT"
+                    break
+                else
+                    red "端口无效或已被占用，请重新输入"
+                fi
+            done
+        fi
+
+    # ===============================
+    # 自动模式 - UUID 处理（兜底）
+    # ===============================
+    if [[ -n "$UUID" ]]; then
+        if is_valid_uuid "$UUID"; then
+            UUID="$UUID"
+        else
+            yellow "检测到 UUID 无效，请重新输入"
+            while true; do
+                read -rp "$(red_input "请输入 UUID（回车自动生成）：")" USER_UUID
+                if [[ -z "$USER_UUID" ]]; then
+                    UUID=$(cat /proc/sys/kernel/random/uuid)
+                    green "已自动生成 UUID：$UUID"
+                    break
+                fi
+                if is_valid_uuid "$USER_UUID"; then
+                    UUID="$USER_UUID"
+                    break
+                else
+                    red "UUID 格式不正确，请重新输入"
+                fi
+            done
+        fi
+    else
+        # 自动模式但未传 UUID → 自动生成（不打扰用户）
+        UUID=$(cat /proc/sys/kernel/random/uuid)
+    fi
+
     else
         # 交互模式 - 端口
         white "当前模式：交互模式"
