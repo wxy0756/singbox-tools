@@ -38,6 +38,20 @@ blue(){ echo -e "\e[1;34m$1\033[0m"; }
 purple(){ echo -e "\e[1;35m$1\033[0m"; }
 err(){ red "[错误] $1" >&2; }
 
+gradient() {
+    local text="$1"
+    local colors=(196 202 208 214 220 190 82 46 51 39 33)
+    local i=0
+    for ((n=0;n<${#text};n++)); do
+        printf "\033[38;5;${colors[i]}m%s\033[0m" "${text:n:1}"
+        i=$(( (i+1)%${#colors[@]} ))
+    done
+    echo
+}
+
+red_input() { printf "\e[1;91m%s\033[0m" "$1"; }
+
+
 # ======================= pause（tuic5 同款） =======================
 pause_return() {
     echo ""
