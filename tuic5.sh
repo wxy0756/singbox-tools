@@ -16,7 +16,7 @@ export LANG=en_US.UTF-8
 # 基本信息
 # ======================================================================
 AUTHOR="littleDoraemon"
-VERSION="v1.0.1"
+VERSION="v1.0.2"
 SINGBOX_VERSION="1.12.13"
 
 # ======================================================================
@@ -941,10 +941,11 @@ change_config() {
                 else
                     is_valid_uuid "$new_uuid" || { red "UUID 格式错误"; continue; }
                 fi
-                
+                green "uuid 检查通过"
                 jq ".inbounds[0].users[0].uuid=\"$new_uuid\" | .inbounds[0].users[0].password=\"$new_uuid\"" \
                     "$config_dir" > /tmp/tuic_cfg && mv /tmp/tuic_cfg "$config_dir"
 
+                green "tuic服务重启中"
                 systemctl restart sing-box-tuic
                 systemctl restart nginx
                 green "UUID 已成功修改"
