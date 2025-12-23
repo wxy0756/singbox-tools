@@ -3,7 +3,6 @@ export LANG=en_US.UTF-8
 
 # ============================================================
 # Sing-box Hysteria2 一键脚本
-# 文件名：hy2_fixed_final.sh
 #
 # ✔ 功能 100% 等价原始 hy2.sh
 # ✔ 状态模型 / 架构 / 菜单行为 对齐 tuic5
@@ -11,7 +10,7 @@ export LANG=en_US.UTF-8
 # ============================================================
 
 AUTHOR="littleDoraemon"
-VERSION="1.0.1"
+VERSION="1.0.2"
 
 
 SINGBOX_VERSION="1.12.13"
@@ -127,6 +126,8 @@ get_public_ip() {
         [[ -n "$ip" ]] && { echo "$ip"; return; }
     done
 }
+
+
 
 
 # ======================= ENV 自动模式加载 =======================
@@ -1110,8 +1111,9 @@ main_menu() {
         blue "===================================================="
         echo ""
 
-        systemctl is-active sing-box >/dev/null 2>&1 && sb="$(green 运行中)" || sb="$(red 未运行)"
-        systemctl is-active nginx >/dev/null 2>&1 && ng="$(green 运行中)" || ng="$(red 未运行)"
+
+        sb="$(get_singbox_status_colored)"
+        ng="$(get_nginx_status_colored)"
 
         yellow " Sing-box 状态：$sb"
         yellow " Nginx 状态：   $ng"
@@ -1160,6 +1162,33 @@ main_menu() {
                 ;;
         esac
     done
+}
+
+
+get_singbox_status_colored() {
+    # 未安装：systemd 服务文件不存在
+    if ! systemctl list-unit-files --type=service 2>/dev/null | grep -q '^sing-box\.service'; then
+        red "✖ 未安装"
+        return
+    fi
+
+    # 已安装，正在运行
+    if systemctl is-active sing-box >/dev/null 2>&1; then
+        green "● 运行中"
+    else
+        red "● 未运行"
+    fi
+}
+
+
+get_nginx_status_colored() {
+    if command_exists nginx && systemctl is-active nginx >/dev/null 2>&1; then
+        green "运行中"
+    elif command_exists nginx; then
+        red "未运行"
+    else
+        red "未安装"
+    fi
 }
 
 
