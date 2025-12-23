@@ -16,7 +16,7 @@ export LANG=en_US.UTF-8
 # 基本信息
 # ======================================================================
 AUTHOR="littleDoraemon"
-VERSION="v1.0.2"
+VERSION="v1.0.1"
 SINGBOX_VERSION="1.12.13"
 
 # ======================================================================
@@ -949,6 +949,7 @@ change_config() {
                 systemctl restart sing-box-tuic
                 systemctl restart nginx
                 green "UUID 已成功修改"
+                read -n 1 -s -r -p "按任意键返回菜单..."
                 ;;
             3)
                 read -rp "$(red_input "请输入新的节点名称：")" new_name
