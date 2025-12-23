@@ -86,24 +86,29 @@ generate_qr() {
 # ======================= 公网 IP 获取 =======================
 get_public_ip() {
     local ip
-    for src in \
-        "curl -4 -fs https://api.ipify.org" \
-        "curl -4 -fs https://ipv4.icanhazip.com" \
-        "curl -4 -fs https://ip.sb" \
+    local sources=(
+        "curl -4 -fs https://api.ipify.org"
+        "curl -4 -fs https://ipv4.icanhazip.com"
+        "curl -4 -fs https://ip.sb"
         "curl -4 -fs https://checkip.amazonaws.com"
-    ; do
-        ip=$(eval $src 2>/dev/null)
+    )
+
+    for src in "${sources[@]}"; do
+        ip=$(eval "$src" 2>/dev/null)
         [[ -n "$ip" ]] && { echo "$ip"; return; }
     done
 
-    for src in \
-        "curl -6 -fs https://api64.ipify.org" \
+    local sources6=(
+        "curl -6 -fs https://api64.ipify.org"
         "curl -6 -fs https://ipv6.icanhazip.com"
-    ; do
-        ip=$(eval $src 2>/dev/null)
+    )
+
+    for src in "${sources6[@]}"; do
+        ip=$(eval "$src" 2>/dev/null)
         [[ -n "$ip" ]] && { echo "$ip"; return; }
     done
 }
+
 
 # ======================= ENV 自动模式加载 =======================
 load_env_vars() {
