@@ -11,7 +11,9 @@ export LANG=en_US.UTF-8
 # ============================================================
 
 AUTHOR="littleDoraemon"
-VERSION="hy2_fixed_final"
+VERSION="1.0.1"
+
+
 SINGBOX_VERSION="1.12.13"
 
 # ======================= 路径定义 =======================
