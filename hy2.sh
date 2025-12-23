@@ -588,15 +588,62 @@ EOF
 get_node_name() {
     local name
 
+     # ======================================================
+    # 1. 持久化节点名称优先（如果用户曾设置过）
+    # ======================================================
     if [[ -f "$work_dir/node_name" ]]; then
-        name=$(cat "$work_dir/node_name")
-    else
-        name="${AUTHOR}-hy2"
+        saved_name=$(cat "$work_dir/node_name")
+        if [[ -n "$saved_name" ]]; then
+            echo "$saved_name"
+            return
+        fi
     fi
 
-    # 跳跃端口只作为展示后缀
-    if [[ -f "$range_port_file" ]]; then
-        name="${name}($(cat "$range_port_file"))"
+    # ======================================================
+    # 2. 当前会话设置的节点名称（change_node_name 临时变量）
+    # ======================================================
+    if [[ -n "$NODE_NAME" ]]; then
+        echo "$NODE_NAME"
+        return
+    fi
+
+
+   # ======================================================
+    # 3. 自动生成节点名称（国家代码 + 运营商）
+    # ======================================================
+
+    local country=""
+    local org=""
+
+    # 先尝试 ipapi
+    country=$(curl -fs --max-time 2 https://ipapi.co/country 2>/dev/null | tr -d '\r\n')
+    org=$(curl -fs --max-time 2 https://ipapi.co/org 2>/dev/null | sed 's/[ ]\+/_/g')
+
+    # fallback
+    if [[ -z "$country" ]]; then
+        country=$(curl -fs --max-time 2 ip.sb/country 2>/dev/null | tr -d '\r\n')
+    fi
+
+    if [[ -z "$org" ]]; then
+        org=$(curl -fs --max-time 2 ipinfo.io/org 2>/dev/null \
+            | awk '{$1=""; print $0}' \
+            | sed -e 's/^[ ]*//' -e 's/[ ]\+/_/g')
+    fi
+
+    # 自动生成节点名称规则
+    if [[ -n "$country" && -n "$org" ]]; then
+        echo "${country}-${org}"
+        return
+    fi
+
+    if [[ -n "$country" && -z "$org" ]]; then
+        echo "$country"
+        return
+    fi
+
+    if [[ -z "$country" && -n "$org" ]]; then
+        echo "${AUTHOR}-hy2"
+        return
     fi
 
     echo "$name"
