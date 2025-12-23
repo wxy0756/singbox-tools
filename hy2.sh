@@ -11,7 +11,7 @@ export LANG=en_US.UTF-8
 # ============================================================
 
 AUTHOR="littleDoraemon"
-VERSION="1.0.1"
+VERSION="1.0.2"
 
 
 SINGBOX_VERSION="1.12.13"
