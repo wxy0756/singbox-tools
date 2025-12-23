@@ -10,7 +10,7 @@ export LANG=en_US.UTF-8
 # ============================================================
 
 AUTHOR="littleDoraemon"
-VERSION="1.0.4"
+VERSION="1.0.5"
 
 
 SINGBOX_VERSION="1.12.13"
@@ -127,6 +127,34 @@ get_public_ip() {
     done
 }
 
+
+get_ipv4() { 
+    local ip
+    local sources=(
+        "curl -4 -fs https://api.ipify.org"
+        "curl -4 -fs https://ipv4.icanhazip.com"
+        "curl -4 -fs https://ip.sb"
+        "curl -4 -fs https://checkip.amazonaws.com"
+    )
+
+    for src in "${sources[@]}"; do
+        ip=$(eval "$src" 2>/dev/null)
+        [[ -n "$ip" ]] && { echo "$ip"; return; }
+    done
+ }
+
+ get_ipv6() { 
+   local ip
+   local sources6=(
+        "curl -6 -fs https://api64.ipify.org"
+        "curl -6 -fs https://ipv6.icanhazip.com"
+    )
+
+    for src in "${sources6[@]}"; do
+        ip=$(eval "$src" 2>/dev/null)
+        [[ -n "$ip" ]] && { echo "$ip"; return; }
+    done
+ }
 
 
 
@@ -472,6 +500,7 @@ EOF
 # ============================================================
 # 查看节点信息 / 多客户端订阅 / 二维码
 # ============================================================
+
 check_nodes() {
     local mode="$1"   # silent / empty
 
@@ -484,35 +513,31 @@ check_nodes() {
     # -------------------------
     # 基础信息
     # -------------------------
-    local PORT UUID ip
+    local PORT UUID
     PORT=$(jq -r '.inbounds[0].listen_port' "$config_dir")
     UUID=$(jq -r '.inbounds[0].users[0].password' "$config_dir")
 
-    ip=$(get_public_ip)
-    [[ -z "$ip" ]] && {
-        red "无法获取公网 IP"
+    # -------------------------
+    # 探测 IPv4 / IPv6
+    # -------------------------
+    local ip4 ip6
+    ip4=$(get_ipv4)
+    ip6=$(get_ipv6)
+
+    if [[ -z "$ip4" && -z "$ip6" ]]; then
+        red "无法获取 IPv4 / IPv6 公网地址"
         [[ "$mode" != "silent" ]] && pause_return
         return
-    }
-
-
-    # -------------------------
-    # 节点名称（统一入口）
-    # -------------------------
-    local NODE_NAME_FINAL ENCODED_NAME
-    NODE_NAME_FINAL=$(get_node_name)
-    ENCODED_NAME=$(urlencode "$NODE_NAME_FINAL")
-
+    fi
 
     # -------------------------
-    # 原始 HY2 URL
+    # 节点名称（基础名）
     # -------------------------
-    local hy2_url
-    hy2_url="hysteria2://${UUID}@${ip}:${PORT}/?insecure=1&alpn=h3#${ENCODED_NAME}"
-    echo "$hy2_url" > "$client_dir"
+    local BASE_NAME
+    BASE_NAME=$(get_node_name)
 
     # -------------------------
-    # 订阅端口（固定）
+    # 订阅端口
     # -------------------------
     local sub_port
     if [[ -f "$sub_port_file" ]]; then
@@ -522,47 +547,86 @@ check_nodes() {
         echo "$sub_port" > "$sub_port_file"
     fi
 
-    local base_url
-    base_url="http://${ip}:${sub_port}/${UUID}"
-
     # -------------------------
-    # 本地订阅文件
+    # 初始化订阅内容
     # -------------------------
-cat > "$sub_file" <<EOF
-# HY2 主订阅
-$base_url
-EOF
-
-    base64 -w0 "$sub_file" > "${work_dir}/sub_base64.txt"
-
-cat > "${work_dir}/sub.json" <<EOF
-{
-  "hy2": "$base_url"
-}
-EOF
-
-    # -------------------------
-    # 多客户端订阅 URL（统一生成）
-    # -------------------------
-    local clash_url singbox_url surge_url
-    clash_url="https://sublink.eooce.com/clash?config=${base_url}"
-    singbox_url="https://sublink.eooce.com/singbox?config=${base_url}"
-    surge_url="https://sublink.eooce.com/surge?config=${base_url}"
-
-    # =====================================================
-    # 输出（内容一致，行为不同）
-    # =====================================================
-    purple "\nHY2 原始链接（节点名称：${NODE_NAME_FINAL}）"
-    green "$hy2_url"
-    [[ "$mode" != "silent" ]] && generate_qr "$hy2_url"
-    echo ""
-
-    purple "基础订阅链接："
-    green "$base_url"
-    [[ "$mode" != "silent" ]] && generate_qr "$base_url"
-    echo ""
+    > "$sub_file"
 
     yellow "========================================================"
+
+    # =====================================================
+    # IPv4 节点
+    # =====================================================
+    local hy2_v4=""
+    if [[ -n "$ip4" ]]; then
+        local name4 enc4
+
+        name4="${BASE_NAME}-v4"
+        enc4=$(urlencode "$name4")
+
+        hy2_v4="hysteria2://${UUID}@${ip4}:${PORT}/?insecure=1&alpn=h3#${enc4}"
+
+        purple "HY2 IPv4 节点（${name4}）"
+        green "$hy2_v4"
+        [[ "$mode" != "silent" ]] && generate_qr "$hy2_v4"
+        echo ""
+
+        echo "$hy2_v4" >> "$sub_file"
+        echo "$hy2_v4" > "$client_dir"
+    fi
+
+    # =====================================================
+    # IPv6 节点
+    # =====================================================
+    local hy2_v6=""
+    if [[ -n "$ip6" ]]; then
+        local name6 enc6
+
+        name6="${BASE_NAME}-v6"
+        enc6=$(urlencode "$name6")
+
+        hy2_v6="hysteria2://${UUID}@[${ip6}]:${PORT}/?insecure=1&alpn=h3#${enc6}"
+
+        purple "HY2 IPv6 节点（${name6}）"
+        green "$hy2_v6"
+        [[ "$mode" != "silent" ]] && generate_qr "$hy2_v6"
+        echo ""
+
+        echo "$hy2_v6" >> "$sub_file"
+        [[ -z "$hy2_v4" ]] && echo "$hy2_v6" > "$client_dir"
+    fi
+
+    yellow "========================================================"
+
+    # -------------------------
+    # 生成本地订阅
+    # -------------------------
+    base64 -w0 "$sub_file" > "${work_dir}/sub_base64.txt"
+
+    # -------------------------
+    # 基础订阅 URL（v4 优先，否则 v6）
+    # -------------------------
+    local base_ip sub_url
+    if [[ -n "$ip4" ]]; then
+        base_ip="$ip4"
+    else
+        base_ip="[${ip6}]"
+    fi
+
+    sub_url="http://${base_ip}:${sub_port}/${UUID}"
+
+    purple "基础订阅链接："
+    green "$sub_url"
+    [[ "$mode" != "silent" ]] && generate_qr "$sub_url"
+    echo ""
+
+    # -------------------------
+    # 多客户端订阅
+    # -------------------------
+    local clash_url singbox_url surge_url
+    clash_url="https://sublink.eooce.com/clash?config=${sub_url}"
+    singbox_url="https://sublink.eooce.com/singbox?config=${sub_url}"
+    surge_url="https://sublink.eooce.com/surge?config=${sub_url}"
 
     purple "Clash / Mihomo："
     green "$clash_url"
@@ -583,6 +647,7 @@ EOF
 
     [[ "$mode" != "silent" ]] && pause_return
 }
+
 
 
 get_node_name() {
