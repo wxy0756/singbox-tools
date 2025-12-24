@@ -20,7 +20,7 @@ export LANG=en_US.UTF-8
 # ======================================================================
 
 AUTHOR="littleDoraemon"
-VERSION="v1.0.1"
+VERSION="v2.3.1"
 SINGBOX_VERSION="1.12.13"
 
 SERVICE_NAME="sing-box-vless-reality"
@@ -636,6 +636,124 @@ interactive_install(){
   refresh_all
 }
 
+print_subscribe_status() {
+  if [[ -f "$NGX_CONF" ]]; then
+    green "当前订阅状态：已启用"
+  else
+    yellow "当前订阅状态：未启用"
+  fi
+}
+
+is_subscribe_enabled() {
+  [[ -f "$NGX_CONF" ]]
+}
+
+change_subscribe_port() {
+  read -rp "$(red_input "请输入新的订阅端口：")" new_port
+
+  if ! is_port "$new_port"; then
+    red "端口无效"
+    return
+  fi
+
+  if is_used "$new_port"; then
+    red "端口已被占用"
+    return
+  fi
+
+  echo "$new_port" > "$SUB_PORT_FILE"
+
+  if is_subscribe_enabled; then
+    build_subscribe_conf
+    green "订阅端口已修改为：$new_port"
+  else
+    yellow "订阅未启用，端口已保存，启用订阅后生效"
+  fi
+}
+
+
+disable_subscribe() {
+  rm -f "$NGX_CONF"
+  rm -f "$NGX_LINK"
+
+  if systemctl is-active nginx >/dev/null 2>&1; then
+    systemctl reload nginx
+  fi
+
+  green "订阅服务已关闭"
+}
+
+
+manage_subscribe_menu() {
+  while true; do
+    clear
+    blue "========== 订阅服务管理（VLESS / Nginx） =========="
+    echo ""
+
+    print_subscribe_status
+    echo ""
+
+    green " 1. 启动 Nginx"
+    green " 2. 停止 Nginx"
+    green " 3. 重启 Nginx"
+
+    yellow "---------------------------------------------"
+    green " 4. 启用 / 重建订阅服务"
+    green " 5. 修改订阅端口"
+    green " 6. 关闭订阅服务"
+
+    yellow "---------------------------------------------"
+    green " 0. 返回上级菜单"
+    red   " 88. 退出脚本"
+    echo ""
+
+    read -rp "$(red_input "请选择：")" sel
+    case "$sel" in
+      1)
+        systemctl start nginx
+        systemctl is-active nginx >/dev/null 2>&1 \
+          && green "Nginx 已启动" \
+          || red "Nginx 启动失败"
+        pause
+        ;;
+      2)
+        systemctl stop nginx
+        green "Nginx 已停止"
+        pause
+        ;;
+      3)
+        systemctl restart nginx
+        systemctl is-active nginx >/dev/null 2>&1 \
+          && green "Nginx 已重启" \
+          || red "Nginx 重启失败"
+        pause
+        ;;
+      4)
+        build_subscribe_conf
+        green "订阅服务已启用 / 重建"
+        pause
+        ;;
+      5)
+        change_subscribe_port
+        pause
+        ;;
+      6)
+        disable_subscribe
+        pause
+        ;;
+      0)
+        return
+        ;;
+      88)
+        exit 0
+        ;;
+      *)
+        red "无效输入"
+        pause
+        ;;
+    esac
+  done
+}
 
 
 # =====================================================
@@ -660,13 +778,13 @@ menu(){
     green " 1. 安装Sing-box"
     red   " 2. 卸载Sing-box"
     yellow "----------------------------"
-    green " 3. 管理服务"
-    green " 4. 查看节点"
-    yellow "----------------------------"
-    green " 5. 修改配置"
-    green " 6. 管理订阅"
-    yellow "----------------------------"
-    red   " 88. 退出"
+    green  " 3. 管理 Sing-box 服务"
+    green  " 4. 查看节点信息"
+    yellow "----------------------------------------"
+    green  " 5. 修改节点配置"
+    green  " 6. 管理订阅服务"
+    yellow "----------------------------------------"
+    red    " 88. 退出脚本"
     read -rp "选择：" c
     case "$c" in
       1) interactive_install ;;
@@ -674,8 +792,9 @@ menu(){
       3) manage_singbox ;;
       4) check_nodes ;;
       5) change_config ;;
-      6) build_subscribe_conf; pause ;;
+      6) manage_subscribe_menu ;;
       88) exit 0 ;;
+      *) red "无效选项，请重新输入" ;;
     esac
 }
 
