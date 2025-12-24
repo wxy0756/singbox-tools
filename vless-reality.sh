@@ -25,7 +25,7 @@ export LANG=en_US.UTF-8
 # ======================================================================
 
 AUTHOR="littleDoraemon"
-VERSION="v2.3.11"
+VERSION="v2.3.12"
 SINGBOX_VERSION="1.12.13"
 
 SERVICE_NAME="sing-box-vless-reality"
@@ -510,24 +510,25 @@ check_nodes() {
   ip4=$(get_ip4)
   ip6=$(get_ip6)
 
-  node_name_raw=get_node_name
 
-  purple "================= 节点信息-VLESS Reality ================="
-  green "$(cat "$SUB_FILE")"
+
+  purple "================= 节点信息（$(get_node_name)） ================="
   echo ""
-
-
-  purple "================= 节点信息:（$(get_node_name)） ================="
 
   while read -r line; do
     uri="${line%%#*}"
     name_enc="${line##*#}"
     name_dec="$(urldecode "$name_enc")"
 
-    green "${uri}#${name_dec}"
+    yellow "【订阅用（URI，已 urlencode）,复制到客户端用这串】"
+    green  "${uri}#${name_enc}"
+    echo ""
+
+    yellow "【人类可读（仅展示，已 decode）】"
+    green  "${uri}#${name_dec}"
+    echo ""
   done < "$SUB_FILE"
 
-  echo ""
 
   purple "================= Base64 订阅（全量） ================="
   green "$(cat "$SUB_B64")"
