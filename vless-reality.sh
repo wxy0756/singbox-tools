@@ -25,7 +25,7 @@ export LANG=en_US.UTF-8
 # ======================================================================
 
 AUTHOR="littleDoraemon"
-VERSION="v2.3.17"
+VERSION="v2.3.18"
 SINGBOX_VERSION="1.12.13"
 
 SERVICE_NAME="sing-box-vless-reality"
@@ -710,29 +710,64 @@ change_config() {
   done
 }
 
-
-
 change_port(){
   read -rp "$(red_input "新端口：")" p
-  is_port "$p" && ! is_used "$p" || { red "端口无效"; return; }
+
+  if ! is_port "$p"; then
+    red "端口格式无效"
+    pause
+    return
+  fi
+
+  if is_used "$p"; then
+    red "端口已被占用"
+    pause
+    return
+  fi
+
+  local old_port
+  old_port=$(jq -r '.inbounds[0].listen_port' "$CONFIG")
 
   PORT="$p"
   jq ".inbounds[0].listen_port=$PORT" "$CONFIG" > /tmp/cfg && mv /tmp/cfg "$CONFIG"
 
+  green "监听端口已从 ${old_port} 修改为：${PORT}"
+  yellow "正在应用配置…"
+
   refresh_all
+  pause
 }
+
 
 change_uuid(){
   read -rp "$(red_input "新 UUID（回车自动生成）：")" u
-  [[ -z "$u" ]] && u=$(cat /proc/sys/kernel/random/uuid)
-  is_uuid "$u" || { red "UUID 无效"; return; }
+
+  if [[ -z "$u" ]]; then
+    u=$(cat /proc/sys/kernel/random/uuid)
+    yellow "未输入 UUID，已自动生成"
+  fi
+
+  if ! is_uuid "$u"; then
+    red "UUID 格式无效"
+    pause
+    return
+  fi
+
+  local old_uuid
+  old_uuid=$(jq -r '.inbounds[0].users[0].uuid' "$CONFIG")
 
   UUID="$u"
   jq ".inbounds[0].users[0].uuid=\"$UUID\"" "$CONFIG" > /tmp/cfg && mv /tmp/cfg "$CONFIG"
 
   rm -f "$SUB_FILE" "$SUB_B64"
 
+  green "UUID 已成功修改"
+  brown "旧 UUID：$old_uuid"
+  brown "新 UUID：$UUID"
+  yellow "正在刷新配置…"
+
   refresh_all
+  pause
 }
 
 
@@ -741,21 +776,48 @@ change_uuid(){
 
 change_node_name(){
   read -rp "$(red_input "新节点名：")" n
-  [[ -z "$n" ]] && return
+
+  if [[ -z "$n" ]]; then
+    yellow "节点名称未修改（输入为空）"
+    pause
+    return
+  fi
+
   echo "$n" > "$NODE_NAME_FILE"
+
+  green "节点名称已成功修改为：$n"
+  yellow "正在刷新节点配置…"
+
   refresh_all
+
+  pause
 }
-
-
-
 
 change_sni(){
   read -rp "$(red_input "新 SNI：")" n
-  [[ -z "$n" ]] && return
+
+  if [[ -z "$n" ]]; then
+    yellow "SNI 未修改（输入为空）"
+    pause
+    return
+  fi
+
+  local old_sni
+  old_sni=$(get_sni)
+
   echo "$n" > "$SNI_FILE"
   make_config
+
+  green "SNI 已成功修改"
+  brown "旧 SNI：$old_sni"
+  brown "新 SNI：$n"
+  yellow "正在应用配置…"
+
   refresh_all
+  pause
 }
+
+
 
 
 # =====================================================
