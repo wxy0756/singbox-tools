@@ -10,7 +10,7 @@ export LANG=en_US.UTF-8
 # ============================================================
 
 AUTHOR="littleDoraemon"
-VERSION="1.0.8"
+VERSION="1.0.9"
 
 
 SINGBOX_VERSION="1.12.13"
@@ -500,6 +500,12 @@ EOF
     green "Sing-box HY2 服务已启动"
 
     init_node_name_on_install
+    
+    # 默认启用订阅服务（如 nginx 已安装）
+    build_subscribe_conf
+
+
+
 }
 # ============================================================
 # 查看节点信息 / 多客户端订阅 / 二维码
@@ -535,13 +541,13 @@ check_nodes() {
     fi
 
     # =====================================================
-    # 节点基础名称（不带 v4/v6）
+    # 节点基础名称
     # =====================================================
     local BASE_NAME
     BASE_NAME=$(get_node_name)
 
     # =====================================================
-    # 订阅端口
+    # 订阅端口（仅用于展示）
     # =====================================================
     local sub_port
     if [[ -f "$sub_port_file" ]]; then
@@ -552,7 +558,7 @@ check_nodes() {
     fi
 
     # =====================================================
-    # 初始化订阅内容
+    # 初始化订阅内容（数据层）
     # =====================================================
     > "$sub_file"
 
@@ -579,7 +585,7 @@ check_nodes() {
     fi
 
     # =====================================================
-    # HY2 IPv6 节点（必须使用 []）
+    # HY2 IPv6 节点
     # =====================================================
     local hy2_v6=""
     if [[ -n "$ip6" ]]; then
@@ -601,83 +607,45 @@ check_nodes() {
     yellow "========================================================"
 
     # =====================================================
-    # 本地订阅（base64）
+    # 本地订阅（base64，仅数据）
     # =====================================================
     base64 -w0 "$sub_file" > "${work_dir}/sub_base64.txt"
 
     # =====================================================
-    # 基础订阅 URL（IPv4 / IPv6 分离）
+    # 订阅展示（仅在订阅启用时）
     # =====================================================
-    local sub_url_v4="" sub_url_v6=""
+    if [[ -f "$sub_nginx_conf" ]]; then
+        local sub_url_v4="" sub_url_v6=""
 
-    if [[ -n "$ip4" ]]; then
-        sub_url_v4="http://${ip4}:${sub_port}/${UUID}"
+        if [[ -n "$ip4" ]]; then
+            sub_url_v4="http://${ip4}:${sub_port}/${UUID}"
+            purple "基础订阅（IPv4）："
+            green "$sub_url_v4"
+            [[ "$mode" != "silent" ]] && generate_qr "$sub_url_v4"
+            echo ""
+        fi
 
-        purple "基础订阅（IPv4）："
-        green "$sub_url_v4"
-        [[ "$mode" != "silent" ]] && generate_qr "$sub_url_v4"
-        echo ""
-    fi
+        if [[ -n "$ip6" ]]; then
+            sub_url_v6="http://[${ip6}]:${sub_port}/${UUID}"
+            purple "基础订阅（IPv6）："
+            green "$sub_url_v6"
+            [[ "$mode" != "silent" ]] && generate_qr "$sub_url_v6"
+            echo ""
+        fi
 
-    if [[ -n "$ip6" ]]; then
-        sub_url_v6="http://[${ip6}]:${sub_port}/${UUID}"
+        yellow "========================================================"
 
-        purple "基础订阅（IPv6）："
-        green "$sub_url_v6"
-        [[ "$mode" != "silent" ]] && generate_qr "$sub_url_v6"
-        echo ""
-    fi
-
-    yellow "========================================================"
-
-    # =====================================================
-    # 客户端订阅（IPv4）
-    # =====================================================
-    if [[ -n "$sub_url_v4" ]]; then
-        local clash_v4 singbox_v4 surge_v4
-        clash_v4="https://sublink.eooce.com/clash?config=${sub_url_v4}"
-        singbox_v4="https://sublink.eooce.com/singbox?config=${sub_url_v4}"
-        surge_v4="https://sublink.eooce.com/surge?config=${sub_url_v4}"
-
-        purple "Clash / Mihomo（IPv4）："
-        green "$clash_v4"
-        [[ "$mode" != "silent" ]] && generate_qr "$clash_v4"
-        echo ""
-
-        purple "Sing-box（IPv4）："
-        green "$singbox_v4"
-        [[ "$mode" != "silent" ]] && generate_qr "$singbox_v4"
-        echo ""
-
-        purple "Surge（IPv4）："
-        green "$surge_v4"
-        [[ "$mode" != "silent" ]] && generate_qr "$surge_v4"
-        echo ""
-    fi
-
-    # =====================================================
-    # 客户端订阅（IPv6）
-    # =====================================================
-    if [[ -n "$sub_url_v6" ]]; then
-        local clash_v6 singbox_v6 surge_v6
-        clash_v6="https://sublink.eooce.com/clash?config=${sub_url_v6}"
-        singbox_v6="https://sublink.eooce.com/singbox?config=${sub_url_v6}"
-        surge_v6="https://sublink.eooce.com/surge?config=${sub_url_v6}"
-
-        purple "Clash / Mihomo（IPv6）："
-        green "$clash_v6"
-        [[ "$mode" != "silent" ]] && generate_qr "$clash_v6"
-        echo ""
-
-        purple "Sing-box（IPv6）："
-        green "$singbox_v6"
-        [[ "$mode" != "silent" ]] && generate_qr "$singbox_v6"
-        echo ""
-
-        purple "Surge（IPv6）："
-        green "$surge_v6"
-        [[ "$mode" != "silent" ]] && generate_qr "$surge_v6"
-        echo ""
+        # ================= 客户端订阅 =================
+        print_client_subscribe_links "$sub_url_v4" "IPv4" "$mode"
+        print_client_subscribe_links "$sub_url_v6" "IPv6" "$mode"
+    else
+        if [[ "$mode" != "silent" ]]; then
+            yellow "订阅服务当前未启用"
+            echo ""
+            blue  "提示：如需使用订阅功能，请前往以下菜单手动启用："
+            green "  主菜单 → 6. 订阅服务管理"
+            green "           → 启用 / 重建订阅服务"
+        fi
     fi
 
     yellow "========================================================"
@@ -685,6 +653,37 @@ check_nodes() {
     [[ "$mode" != "silent" ]] && pause_return
 }
 
+
+
+print_client_subscribe_links() {
+    local sub_url="$1"   # 基础订阅 URL
+    local label="$2"     # IPv4 / IPv6（仅用于显示）
+    local mode="$3"      # silent / empty
+
+    # 没有订阅 URL 直接返回
+    [[ -z "$sub_url" ]] && return
+
+    # ---------- Clash / Mihomo ----------
+    purple "Clash / Mihomo（${label}）："
+    local clash_url="https://sublink.eooce.com/clash?config=${sub_url}"
+    green "$clash_url"
+    [[ "$mode" != "silent" ]] && generate_qr "$clash_url"
+    echo ""
+
+    # ---------- Sing-box ----------
+    purple "Sing-box（${label}）："
+    local singbox_url="https://sublink.eooce.com/singbox?config=${sub_url}"
+    green "$singbox_url"
+    [[ "$mode" != "silent" ]] && generate_qr "$singbox_url"
+    echo ""
+
+    # ---------- Surge ----------
+    purple "Surge（${label}）："
+    local surge_url="https://sublink.eooce.com/surge?config=${sub_url}"
+    green "$surge_url"
+    [[ "$mode" != "silent" ]] && generate_qr "$surge_url"
+    echo ""
+}
 
 
 get_node_name() {
@@ -1377,6 +1376,10 @@ print_subscribe_status() {
     else
         yellow "当前订阅状态：未启用"
     fi
+}
+
+is_subscribe_enabled() {
+    [[ -f "$sub_nginx_conf" ]]
 }
 
 
