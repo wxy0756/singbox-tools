@@ -24,7 +24,7 @@ export LANG=en_US.UTF-8
 # ======================================================================
 
 AUTHOR="littleDoraemon"
-VERSION="v1.0.3"
+VERSION="v1.0.5"
 SINGBOX_VERSION="1.12.13"
 
 SERVICE_NAME="sing-box-vless-reality"
@@ -38,8 +38,9 @@ SUB_FILE="$WORK_DIR/sub.txt"
 SUB_B64="$WORK_DIR/sub_base64.txt"
 SUB_PORT_FILE="$WORK_DIR/sub.port"
 
+
+
 NGX_CONF="$WORK_DIR/vless_reality_sub.conf"
-NGX_LINK="/etc/nginx/conf.d/vless_reality_sub.conf"
 
 REALITY_PUBKEY_FILE="$WORK_DIR/reality_public.key"
 REALITY_SID_FILE="$WORK_DIR/reality_short_id"
@@ -99,6 +100,24 @@ is_used() {
 is_uuid(){ [[ "$1" =~ ^[a-fA-F0-9-]{36}$ ]]; }
 
 
+
+
+detect_nginx_conf_dir() {
+  if [[ "$INIT_SYSTEM" == "openrc" ]]; then
+    # Alpine / OpenRC
+    echo "/etc/nginx/http.d"
+  else
+    # systemd (Debian / Ubuntu / CentOS ...)
+    echo "/etc/nginx/conf.d"
+  fi
+}
+
+init_nginx_paths() {
+  NGX_NGINX_DIR="$(detect_nginx_conf_dir)"
+  NGX_LINK="$NGX_NGINX_DIR/vless_reality_sub.conf"
+}
+
+
 detect_init() {
   if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
     INIT_SYSTEM="systemd"
@@ -108,6 +127,13 @@ detect_init() {
     red "无法识别 init 系统（既不是 systemd 也不是 OpenRC）"
     exit 1
   fi
+  
+
+}
+
+
+init_platform() {
+  init_nginx_paths
 }
 
 
@@ -656,10 +682,9 @@ chmod +x /etc/init.d/${SERVICE_NAME}
 # =====================================================
 
 ensure_nginx_conf_dir() {
-  if [[ ! -d /etc/nginx/conf.d ]]; then
-    mkdir -p /etc/nginx/conf.d
-  fi
+  [[ -d "$NGX_NGINX_DIR" ]] || mkdir -p "$NGX_NGINX_DIR"
 }
+
 
 
 build_subscribe_conf(){
@@ -1329,9 +1354,9 @@ menu(){
 }
 
 
+
 get_singbox_status_colored() {
   if [[ "$INIT_SYSTEM" == "systemd" ]]; then
-    # 服务未安装
     if ! systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${SERVICE_NAME}\.service"; then
       red "未安装"
       return
@@ -1342,9 +1367,7 @@ get_singbox_status_colored() {
     else
       red "未运行"
     fi
-
   else
-    # OpenRC（Alpine）
     if [[ ! -f "/etc/init.d/${SERVICE_NAME}" ]]; then
       red "未安装"
       return
@@ -1358,34 +1381,28 @@ get_singbox_status_colored() {
   fi
 }
 
-
-
-
-
 get_nginx_status_colored() {
-  # nginx 未安装
   if ! command_exists nginx; then
     red "未安装"
     return
   fi
 
-  # systemd
   if [[ "$INIT_SYSTEM" == "systemd" ]]; then
     if systemctl is-active --quiet nginx; then
       green "运行中"
     else
       red "未运行"
     fi
-
-  # OpenRC (Alpine)
   else
-    if rc-service nginx status >/dev/null 2>&1; then
+    if rc-service nginx status 2>/dev/null | grep -q "started"; then
       green "运行中"
     else
       red "未运行"
     fi
   fi
 }
+
+
 
 
 get_subscribe_status_colored() {
@@ -1463,11 +1480,14 @@ main_loop() {
 
 
 
+
 # =====================================================
 # main
 # =====================================================
 main() {
   detect_init
+  init_platform
+
   is_interactive
   if [[ $? -eq 1 ]]; then
     quick_install
