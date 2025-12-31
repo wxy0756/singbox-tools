@@ -24,7 +24,7 @@ export LANG=en_US.UTF-8
 # ======================================================================
 
 AUTHOR="littleDoraemon"
-VERSION="v1.0.2"
+VERSION="v1.0.3"
 SINGBOX_VERSION="1.12.13"
 
 SERVICE_NAME="sing-box-vless-reality"
@@ -79,8 +79,83 @@ gradient() {
 
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
 is_port(){ [[ "$1" =~ ^[0-9]+$ && "$1" -ge 1 && "$1" -le 65535 ]]; }
-is_used(){ ss -tuln | grep -q ":$1 "; }
+
+is_used() {
+  local port="$1"
+
+  if command -v ss >/dev/null 2>&1; then
+    # ss：兼容 IPv4 / IPv6 / [::]:PORT / 0.0.0.0:PORT
+    ss -tuln | grep -qE "[:.]${port}\b"
+  elif command -v netstat >/dev/null 2>&1; then
+    netstat -tuln | grep -qE "[:.]${port}\b"
+  else
+    # 理论兜底：无 ss / netstat 时认为未占用
+    return 1
+  fi
+}
+
+
+
 is_uuid(){ [[ "$1" =~ ^[a-fA-F0-9-]{36}$ ]]; }
+
+
+detect_init() {
+  if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+    INIT_SYSTEM="systemd"
+  elif command -v rc-service >/dev/null 2>&1; then
+    INIT_SYSTEM="openrc"
+  else
+    red "无法识别 init 系统（既不是 systemd 也不是 OpenRC）"
+    exit 1
+  fi
+}
+
+
+service_enable() {
+  local svc="$1"
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    systemctl enable "$svc"
+  else
+    rc-update add "$svc" default 2>/dev/null || rc-update add "$svc" boot
+  fi
+}
+
+service_start() {
+  local svc="$1"
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    systemctl start "$svc"
+  else
+    rc-service "$svc" start
+  fi
+}
+
+service_stop() {
+  local svc="$1"
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    systemctl stop "$svc"
+  else
+    rc-service "$svc" stop
+  fi
+}
+
+service_restart() {
+  local svc="$1"
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    systemctl restart "$svc"
+  else
+    rc-service "$svc" restart
+  fi
+}
+
+service_active() {
+  local svc="$1"
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    systemctl is-active --quiet "$svc"
+  else
+   rc-service "$svc" status | grep -q "started"
+  fi
+}
+
 
 # =====================================================
 # IP
@@ -355,7 +430,7 @@ install_singbox(){
 }
 
 
-uninstall_singbox(){
+uninstall_singbox() {
   clear
   blue "====== 卸载 Sing-box（VLESS Reality） ======"
   echo ""
@@ -364,35 +439,46 @@ uninstall_singbox(){
   u=${u:-y}
   [[ ! "$u" =~ ^[Yy]$ ]] && return
 
-  # ----------------------------
-  # 停止并移除 Sing-box 服务
-  # ----------------------------
-  systemctl stop ${SERVICE_NAME} 2>/dev/null
-  systemctl disable ${SERVICE_NAME} 2>/dev/null
-  rm -f /etc/systemd/system/${SERVICE_NAME}.service
-  systemctl daemon-reload
+  # ==================================================
+  # 1. 停止并移除 Sing-box 服务
+  # ==================================================
+  if service_active ${SERVICE_NAME}; then
+    service_stop ${SERVICE_NAME}
+  fi
 
-  # ----------------------------
-  # 删除运行目录
-  # ----------------------------
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    systemctl disable ${SERVICE_NAME} 2>/dev/null
+    rm -f /etc/systemd/system/${SERVICE_NAME}.service
+    systemctl daemon-reload
+  else
+    rc-update del ${SERVICE_NAME} 2>/dev/null
+    rm -f /etc/init.d/${SERVICE_NAME}
+  fi
+
+  # ==================================================
+  # 2. 删除运行目录
+  # ==================================================
   rm -rf "$WORK_DIR"
 
-  # ----------------------------
-  # 删除 nginx 订阅配置
-  # ----------------------------
+  # ==================================================
+  # 3. 删除 nginx 订阅配置
+  # ==================================================
   rm -f "$NGX_LINK"
   rm -f "$NGX_CONF"
 
-  if systemctl is-active nginx >/dev/null 2>&1; then
-    systemctl reload nginx
+  # ==================================================
+  # 4. 重载 nginx（如果存在且在运行）
+  # ==================================================
+  if command_exists nginx && service_active nginx; then
+    service_restart nginx
   fi
 
   green "Sing-box（VLESS Reality）已卸载完成"
   echo ""
 
-  # ----------------------------
-  # 是否卸载 Nginx（默认不卸载）
-  # ----------------------------
+  # ==================================================
+  # 5. 是否卸载 Nginx（可选）
+  # ==================================================
   if command_exists nginx; then
     read -rp "是否同时卸载 Nginx？[y/N]：" delng
     delng=${delng:-n}
@@ -500,11 +586,28 @@ EOF
 # =====================================================
 # systemd
 # =====================================================
-make_service(){
+
+
+make_service() {
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    make_service_systemd
+  else
+    make_service_openrc
+  fi
+
+  service_enable "${SERVICE_NAME}"
+  service_start "${SERVICE_NAME}"
+}
+
+
+
+make_service_systemd(){
 cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
 [Unit]
 Description=Sing-box VLESS Reality
-After=network.target
+After=network-online.target
+Wants=network-online.target
+
 
 [Service]
 ExecStart=$WORK_DIR/sing-box run -c $CONFIG
@@ -515,16 +618,53 @@ LimitNOFILE=1048576
 WantedBy=multi-user.target
 EOF
 
-  systemctl daemon-reload
-  systemctl enable ${SERVICE_NAME}
-  systemctl start ${SERVICE_NAME}
+ systemctl daemon-reload
+}
+
+
+make_service_openrc() {
+
+cat > /etc/init.d/${SERVICE_NAME} <<EOF
+#!/sbin/openrc-run
+
+name="sing-box vless reality"
+description="Sing-box VLESS Reality"
+
+command="$WORK_DIR/sing-box"
+command_args="run -c $CONFIG"
+command_background="no"
+
+start_pre() {
+    checkpath -d -m 0755 /var/log
+}
+
+supervisor="supervise-daemon"
+output_log="/var/log/${SERVICE_NAME}.log"
+error_log="/var/log/${SERVICE_NAME}.err"
+
+depend() {
+  need net
+}
+EOF
+
+chmod +x /etc/init.d/${SERVICE_NAME}
 }
 
 
 # =====================================================
 # 订阅
 # =====================================================
+
+ensure_nginx_conf_dir() {
+  if [[ ! -d /etc/nginx/conf.d ]]; then
+    mkdir -p /etc/nginx/conf.d
+  fi
+}
+
+
 build_subscribe_conf(){
+  ensure_nginx_conf_dir
+
   [[ -f "$SUB_PORT_FILE" ]] || echo $((PORT+1)) > "$SUB_PORT_FILE"
 
   cat > "$NGX_CONF" <<EOF
@@ -540,9 +680,10 @@ EOF
 
   ln -sf "$NGX_CONF" "$NGX_LINK"
 
-  if systemctl is-active nginx >/dev/null 2>&1; then
-    systemctl reload nginx
+  if service_active nginx; then
+    service_restart nginx
   fi
+
 }
 
 
@@ -602,7 +743,8 @@ generate_nodes() {
   # -----------------------------
   # Base64 订阅（全量）
   # -----------------------------
-  base64 -w0 "$SUB_FILE" > "$SUB_B64"
+  base64 "$SUB_FILE" | tr -d '\n' > "$SUB_B64"
+
 
   return 0
 }
@@ -732,7 +874,7 @@ generate_qr() {
 refresh_all(){
   check_nodes silent
   build_subscribe_conf
-  systemctl restart ${SERVICE_NAME}
+  service_restart ${SERVICE_NAME}
 }
 
 
@@ -954,8 +1096,9 @@ quick_install(){
   refresh_all
 
    # ===== 强制启用订阅 =====
-  systemctl start nginx
-  systemctl enable nginx
+  service_start nginx
+  service_enable nginx
+
   build_subscribe_conf
 }
 
@@ -1004,8 +1147,9 @@ interactive_install(){
   refresh_all
   
   # 启动服务（交互安装期望的行为）
-  systemctl start ${SERVICE_NAME}
-  systemctl start nginx
+  service_start ${SERVICE_NAME}
+  service_start nginx
+
 }
 
 print_subscribe_status() {
@@ -1048,9 +1192,10 @@ disable_subscribe() {
   rm -f "$NGX_CONF"
   rm -f "$NGX_LINK"
 
-  if systemctl is-active nginx >/dev/null 2>&1; then
-    systemctl reload nginx
+  if service_active nginx; then
+    service_restart nginx
   fi
+
 
   green "订阅服务已关闭"
 }
@@ -1082,22 +1227,30 @@ manage_subscribe_menu() {
     read -rp "$(red_input "请选择：")" sel
     case "$sel" in
       1)
-        systemctl start nginx
-        systemctl is-active nginx >/dev/null 2>&1 \
-          && green "Nginx 已启动" \
-          || red "Nginx 启动失败"
+        service_start nginx
+        if service_active nginx; then
+          green "Nginx 已启动"
+        else
+          red "Nginx 启动失败"
+        fi
         pause
         ;;
       2)
-        systemctl stop nginx
-        green "Nginx 已停止"
+        service_stop nginx
+        if service_active nginx; then
+          red "Nginx 停止失败"
+        else
+          green "Nginx 已停止"
+        fi
         pause
         ;;
       3)
-        systemctl restart nginx
-        systemctl is-active nginx >/dev/null 2>&1 \
-          && green "Nginx 已重启" \
-          || red "Nginx 重启失败"
+        service_restart nginx
+        if service_active nginx; then
+          green "Nginx 已重启"
+        else
+          red "Nginx 重启失败"
+        fi
         pause
         ;;
       4)
@@ -1175,34 +1328,65 @@ menu(){
     esac
 }
 
+
 get_singbox_status_colored() {
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    # 服务未安装
     if ! systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${SERVICE_NAME}\.service"; then
-        red "未安装"
-        return
+      red "未安装"
+      return
     fi
 
-    if systemctl is-active --quiet ${SERVICE_NAME}; then
-        green "运行中"
+    if systemctl is-active --quiet "${SERVICE_NAME}"; then
+      green "运行中"
     else
-        red "未运行"
+      red "未运行"
     fi
+
+  else
+    # OpenRC（Alpine）
+    if [[ ! -f "/etc/init.d/${SERVICE_NAME}" ]]; then
+      red "未安装"
+      return
+    fi
+
+    if rc-service "${SERVICE_NAME}" status 2>/dev/null | grep -q "started"; then
+      green "运行中"
+    else
+      red "未运行"
+    fi
+  fi
 }
+
 
 
 
 
 get_nginx_status_colored() {
-    if ! command_exists nginx; then
-        red "未安装"
-        return
+  # nginx 未安装
+  if ! command_exists nginx; then
+    red "未安装"
+    return
+  fi
+
+  # systemd
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    if systemctl is-active --quiet nginx; then
+      green "运行中"
+    else
+      red "未运行"
     fi
 
-    if systemctl is-active nginx >/dev/null 2>&1; then
-        green "运行中"
+  # OpenRC (Alpine)
+  else
+    if rc-service nginx status >/dev/null 2>&1; then
+      green "运行中"
     else
-        red "未运行"
+      red "未运行"
     fi
+  fi
 }
+
 
 get_subscribe_status_colored() {
     if [[ -f "$NGX_CONF" ]]; then
@@ -1230,22 +1414,30 @@ manage_singbox() {
     read -rp "$(red_input "请选择：")" sel
     case "$sel" in
       1)
-        systemctl start ${SERVICE_NAME}
-        systemctl is-active ${SERVICE_NAME} >/dev/null 2>&1 \
-          && green "服务已启动" \
-          || red "启动失败"
+        service_start ${SERVICE_NAME}
+        if service_active ${SERVICE_NAME}; then
+          green "服务已启动"
+        else
+          red "启动失败"
+        fi
         pause
         ;;
       2)
-        systemctl stop ${SERVICE_NAME}
-        green "服务已停止"
+        service_stop ${SERVICE_NAME}
+        if service_active ${SERVICE_NAME}; then
+          red "停止失败"
+        else
+          green "服务已停止"
+        fi
         pause
         ;;
       3)
-        systemctl restart ${SERVICE_NAME}
-        systemctl is-active ${SERVICE_NAME} >/dev/null 2>&1 \
-          && green "服务已重启" \
-          || red "重启失败"
+        service_restart ${SERVICE_NAME}
+        if service_active ${SERVICE_NAME}; then
+          green "服务已重启"
+        else
+          red "重启失败"
+        fi
         pause
         ;;
       0)
@@ -1275,6 +1467,7 @@ main_loop() {
 # main
 # =====================================================
 main() {
+  detect_init
   is_interactive
   if [[ $? -eq 1 ]]; then
     quick_install
