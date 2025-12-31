@@ -21,7 +21,7 @@ export LANG=en_US.UTF-8
 # ======================================================================
 
 AUTHOR="littleDoraemon"
-VERSION="2.0.1"
+VERSION="1.0.2"
 
 
 SINGBOX_VERSION="1.12.13"
@@ -41,7 +41,7 @@ node_name_file="$work_dir/node_name"
 
 
 sub_nginx_conf="$work_dir/singbox_hy2_sub.conf"
-nginx_conf_link="/etc/nginx/conf.d/singbox_hy2_sub.conf"
+
 
 
 # NAT comment
@@ -92,10 +92,17 @@ is_valid_port(){
 }
 
 is_port_occupied(){
-    ss -tuln | grep -q ":$1 " && return 0
-    lsof -i :"$1" &>/dev/null && return 0
-    netstat -tuln 2>/dev/null | grep -q ":$1 " && return 0
+  local port="$1"
+
+  if command -v ss >/dev/null 2>&1; then
+    # ss：兼容 IPv4 / IPv6 / [::]:PORT / 0.0.0.0:PORT
+    ss -tuln | grep -qE "[:.]${port}\b"
+  elif command -v netstat >/dev/null 2>&1; then
+    netstat -tuln | grep -qE "[:.]${port}\b"
+  else
+    # 理论兜底：无 ss / netstat 时认为未占用
     return 1
+  fi
 }
 
 is_valid_uuid(){
@@ -174,6 +181,73 @@ get_ipv4() {
  }
 
 
+detect_nginx_conf_dir() {
+  if [[ "$INIT_SYSTEM" == "openrc" ]]; then
+    echo "/etc/nginx/http.d"
+  else
+    echo "/etc/nginx/conf.d"
+  fi
+}
+
+
+detect_init() {
+  if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+    INIT_SYSTEM="systemd"
+  elif command -v rc-service >/dev/null 2>&1; then
+    INIT_SYSTEM="openrc"
+  else
+    red "无法识别 init 系统"
+    exit 1
+  fi
+}
+
+
+
+
+service_enable() {
+  local svc="$1"
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    systemctl enable "$svc"
+  else
+    rc-update add "$svc" default 2>/dev/null || rc-update add "$svc" boot
+  fi
+}
+
+service_start() {
+  local svc="$1"
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    systemctl start "$svc"
+  else
+    rc-service "$svc" start
+  fi
+}
+
+service_stop() {
+  local svc="$1"
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    systemctl stop "$svc"
+  else
+    rc-service "$svc" stop
+  fi
+}
+
+service_restart() {
+  local svc="$1"
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    systemctl restart "$svc"
+  else
+    rc-service "$svc" restart
+  fi
+}
+
+service_active() {
+  local svc="$1"
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    systemctl is-active --quiet "$svc"
+  else
+   rc-service "$svc" status | grep -q "started"
+  fi
+}
 
 # ======================= ENV 自动模式加载 =======================
 load_env_vars() {
@@ -214,6 +288,7 @@ install_common_packages() {
 
     for p in $pkgs; do
         if ! command_exists "$p"; then
+            # 只 update 一次
             if [[ $need_update -eq 1 ]]; then
                 if command_exists apt; then
                     apt update -y
@@ -223,6 +298,9 @@ install_common_packages() {
                     dnf makecache -y
                 elif command_exists apk; then
                     apk update
+                else
+                    err "无法识别包管理器，请手动安装依赖"
+                    return 1
                 fi
                 need_update=0
             fi
@@ -238,10 +316,23 @@ install_common_packages() {
                 apk add "$p"
             else
                 err "无法识别包管理器，请手动安装 $p"
+                return 1
             fi
         fi
     done
+
+    # ==================================================
+    # Alpine nftables / iptables NAT 兼容兜底
+    # ==================================================
+    if command_exists apk; then
+        # 检测 NAT 表是否可用
+        if ! iptables -t nat -L >/dev/null 2>&1; then
+            yellow "检测到 iptables NAT 不可用，尝试安装 iptables-legacy 兼容层"
+            apk add iptables-legacy ip6tables-legacy >/dev/null 2>&1 || true
+        fi
+    fi
 }
+
 
 # ============================================================
 # 防火墙放行 HY2 主端口（UDP）
@@ -490,25 +581,9 @@ EOF
     green "配置文件已生成：$config_dir"
 
     # ====================================================
-    # systemd 服务
+    # 创建并启动服务（systemd / openrc 自适应）
     # ====================================================
-cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
-[Unit]
-Description=Sing-box Hysteria2
-After=network.target
-
-[Service]
-ExecStart=$work_dir/sing-box run -c $config_dir
-Restart=always
-LimitNOFILE=1048576
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    systemctl enable ${SERVICE_NAME}
-    systemctl restart ${SERVICE_NAME}
+    make_service
 
     green "Sing-box HY2 服务已启动"
 
@@ -520,6 +595,71 @@ EOF
 
 
 }
+
+
+make_service() {
+  if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+    make_service_systemd
+  else
+    make_service_openrc
+  fi
+
+  service_enable "${SERVICE_NAME}"
+  service_start  "${SERVICE_NAME}"
+}
+
+
+
+make_service_systemd() {
+
+cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
+[Unit]
+Description=Sing-box Hysteria2
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${work_dir}/sing-box run -c ${config_dir}
+Restart=always
+RestartSec=3
+LimitNOFILE=1048576
+
+# 安全加固（可选，但推荐）
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  # 重新加载 systemd
+  systemctl daemon-reload
+}
+
+
+
+make_service_openrc() {
+cat > /etc/init.d/${SERVICE_NAME} <<EOF
+#!/sbin/openrc-run
+name="sing-box hy2"
+command="$work_dir/sing-box"
+command_args="run -c $config_dir"
+supervisor="supervise-daemon"
+output_log="/var/log/${SERVICE_NAME}.log"
+error_log="/var/log/${SERVICE_NAME}.err"
+
+depend() {
+  need net
+}
+EOF
+
+chmod +x /etc/init.d/${SERVICE_NAME}
+}
+
+
 # ============================================================
 # 查看节点信息 / 多客户端订阅 / 二维码
 # ============================================================
@@ -830,26 +970,40 @@ manage_singbox() {
         read -rp "请选择操作：" sel
         case "$sel" in
             1)
-                systemctl start ${SERVICE_NAME}
-                systemctl is-active ${SERVICE_NAME} >/dev/null 2>&1 \
-                    && green "Sing-box 已启动" \
-                    || red "Sing-box 启动失败"
+                service_start "${SERVICE_NAME}"
+                if service_active "${SERVICE_NAME}"; then
+                    green "Sing-box 已启动"
+                else
+                    red "Sing-box 启动失败"
+                fi
                 pause_return
                 ;;
             2)
-                systemctl stop ${SERVICE_NAME}
-                green "Sing-box 已停止"
+                service_stop "${SERVICE_NAME}"
+                if service_active "${SERVICE_NAME}"; then
+                    red "Sing-box 停止失败"
+                else
+                    green "Sing-box 已停止"
+                fi
                 pause_return
                 ;;
             3)
-                systemctl restart ${SERVICE_NAME}
-                systemctl is-active ${SERVICE_NAME} >/dev/null 2>&1 \
-                    && green "Sing-box 已重启" \
-                    || red "Sing-box 重启失败"
+                service_restart "${SERVICE_NAME}"
+                if service_active "${SERVICE_NAME}"; then
+                    green "Sing-box 已重启"
+                else
+                    red "Sing-box 重启失败"
+                fi
                 pause_return
                 ;;
             4)
-                systemctl status ${SERVICE_NAME} -n 20
+                echo ""
+                if service_active "${SERVICE_NAME}"; then
+                    green "Sing-box 当前状态：运行中"
+                else
+                    red "Sing-box 当前状态：未运行"
+                fi
+                echo ""
                 pause_return
                 ;;
             0)
@@ -865,6 +1019,7 @@ manage_singbox() {
         esac
     done
 }
+
 
 # ============================================================
 # 修改 HY2 主端口（自动刷新 NAT）
@@ -899,7 +1054,8 @@ change_hy2_port() {
 
 
     # 重启服务
-    systemctl restart ${SERVICE_NAME}
+    service_restart "${SERVICE_NAME}"
+
 
     green "Sing-box 已重启，端口修改生效"
 
@@ -930,7 +1086,7 @@ change_uuid() {
 
     green "UUID 已修改：${old_uuid} → ${new_uuid}"
 
-    systemctl restart ${SERVICE_NAME}
+    service_restart "${SERVICE_NAME}"
     green "Sing-box 已重启"
 
     pause_return
@@ -1131,15 +1287,15 @@ manage_node_config_menu() {
     done
 }
 
+
 uninstall_singbox() {
 
     clear
     blue "============== 卸载 HY2 =============="
     echo ""
 
-    read -rp "确认卸载Singbox(包括卸载hy2)？ [Y/n]（默认 Y）：" u
+    read -rp "确认卸载 Sing-box（HY2）？ [Y/n]（默认 Y）：" u
     u=${u:-y}
-
     [[ ! "$u" =~ ^[Yy]$ ]] && { yellow "已取消卸载"; pause_return; return; }
 
     # ---------- 清理跳跃端口 ----------
@@ -1152,27 +1308,39 @@ uninstall_singbox() {
         ip6tables -D INPUT -p udp --dport ${min}:${max} -j ACCEPT 2>/dev/null
         rm -f "$range_port_file"
     fi
+    green "已清理跳跃端口相关规则"
 
-    green "已清理跳跃端口相关防火墙规则"
-
-    # ---------- 停止并删除服务 ----------
-    systemctl stop ${SERVICE_NAME} 2>/dev/null
-    systemctl disable ${SERVICE_NAME} 2>/dev/null
-    rm -f /etc/systemd/system/${SERVICE_NAME}.service
-    systemctl daemon-reload
+    # ---------- 停止并移除服务 ----------
+    if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+        systemctl stop ${SERVICE_NAME} 2>/dev/null
+        systemctl disable ${SERVICE_NAME} 2>/dev/null
+        rm -f /etc/systemd/system/${SERVICE_NAME}.service
+        systemctl daemon-reload
+    else
+        rc-service ${SERVICE_NAME} stop 2>/dev/null
+        rc-update del ${SERVICE_NAME} 2>/dev/null
+        rm -f /etc/init.d/${SERVICE_NAME}
+    fi
+    green "服务已移除"
 
     # ---------- 删除运行目录 ----------
     rm -rf "$work_dir"
 
-    # ---------- 删除 nginx 订阅配置 ----------
-    rm -f /etc/nginx/conf.d/singbox_hy2_sub.conf
+    # ---------- 删除订阅配置 ----------
+    rm -f "$sub_nginx_conf" "$nginx_conf_link"
+
+    # ---------- 重载 nginx（如存在） ----------
+    if command_exists nginx && service_active nginx; then
+        service_restart nginx
+    fi
+
+    green "HY2 已卸载完成"
+    echo ""
 
     # ---------- 是否卸载 nginx ----------
     if command_exists nginx; then
-        echo ""
-        read -rp "是否卸载 Nginx？ [y/N]（默认 N）：" delng
+        read -rp "是否同时卸载 Nginx？ [y/N]：" delng
         delng=${delng:-n}
-
         if [[ "$delng" =~ ^[Yy]$ ]]; then
             if command_exists apt; then
                 apt remove -y nginx nginx-core
@@ -1189,7 +1357,6 @@ uninstall_singbox() {
         fi
     fi
 
-    green "HY2 卸载完成"
     pause_return
 }
 
@@ -1197,23 +1364,19 @@ uninstall_singbox() {
 # ============================================================
 # 订阅服务（Nginx）管理菜单
 # ============================================================
-
 manage_subscribe_menu() {
     while true; do
         clear
         blue "========== 订阅服务管理（Nginx） =========="
         echo ""
 
-        # 订阅状态（你刚刚抽出来的函数）
         print_subscribe_status
         echo ""
 
-        # ---------- nginx 原生管理 ----------
         green " 1. 启动 Nginx"
         green " 2. 停止 Nginx"
         green " 3. 重启 Nginx"
 
-        # ---------- 订阅管理 ----------
         yellow "-----------------------------------------"
         green " 4. 启用 / 重建订阅服务"
         green " 5. 修改订阅端口"
@@ -1226,28 +1389,21 @@ manage_subscribe_menu() {
 
         read -rp "请选择操作：" sel
         case "$sel" in
-            # ===== nginx 原生操作 =====
             1)
-                systemctl start nginx
-                systemctl is-active nginx >/dev/null 2>&1 \
-                    && green "Nginx 已启动" \
-                    || red "Nginx 启动失败"
+                service_start nginx
+                service_active nginx && green "Nginx 已启动" || red "Nginx 启动失败"
                 pause_return
                 ;;
             2)
-                systemctl stop nginx
-                green "Nginx 已停止"
+                service_stop nginx
+                service_active nginx && red "Nginx 停止失败" || green "Nginx 已停止"
                 pause_return
                 ;;
             3)
-                systemctl restart nginx
-                systemctl is-active nginx >/dev/null 2>&1 \
-                    && green "Nginx 已重启" \
-                    || red "Nginx 重启失败"
+                service_restart nginx
+                service_active nginx && green "Nginx 已重启" || red "Nginx 重启失败"
                 pause_return
                 ;;
-
-            # ===== 订阅管理 =====
             4)
                 build_subscribe_conf
                 pause_return
@@ -1260,7 +1416,6 @@ manage_subscribe_menu() {
                 disable_subscribe
                 pause_return
                 ;;
-
             0)
                 return
                 ;;
@@ -1274,6 +1429,7 @@ manage_subscribe_menu() {
         esac
     done
 }
+
 
 
 # ============================================================
@@ -1344,32 +1500,28 @@ main_menu() {
     done
 }
 
+
 get_singbox_status_colored() {
-    if ! systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${SERVICE_NAME}\.service"; then
-        red "未安装"
-        return
-    fi
-
-    if systemctl is-active --quiet ${SERVICE_NAME}; then
-        green "运行中"
+    if [[ "$INIT_SYSTEM" == "systemd" ]]; then
+        systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${SERVICE_NAME}\.service" \
+            || { red "未安装"; return; }
     else
-        red "未运行"
+        [[ -f "/etc/init.d/${SERVICE_NAME}" ]] || { red "未安装"; return; }
     fi
-}
 
+    service_active ${SERVICE_NAME} && green "运行中" || red "未运行"
+}
 
 get_nginx_status_colored() {
-    if ! command -v nginx >/dev/null 2>&1; then
+    if ! command_exists nginx; then
         red "未安装"
         return
     fi
 
-    if systemctl is-active nginx >/dev/null 2>&1; then
-        green "运行中"
-    else
-        red "未运行"
-    fi
+    service_active nginx && green "运行中" || red "未运行"
 }
+
+
 
 get_subscribe_status_colored() {
     if [[ -f "$sub_nginx_conf" ]]; then
@@ -1398,23 +1550,36 @@ is_subscribe_enabled() {
 build_subscribe_conf() {
     local sub_port uuid content
 
-    # 基本校验
-    [[ ! -f "$sub_file" ]] && {
-        red "订阅内容不存在，请先生成节点"
-        return 1
-    }
+    # ==================================================
+    # 1. 确保订阅数据存在（彻底解耦 check_nodes 调用顺序）
+    # ==================================================
+    if [[ ! -f "$sub_file" || ! -s "$sub_file" ]]; then
+        yellow "订阅数据不存在，正在自动生成节点信息…"
+        check_nodes silent || {
+            red "生成订阅数据失败，无法创建订阅服务"
+            return 1
+        }
+    fi
 
+    # ==================================================
+    # 2. 读取 UUID 与订阅端口
+    # ==================================================
     uuid=$(jq -r '.inbounds[0].users[0].password' "$config_dir")
-    sub_port=$(cat "$sub_port_file" 2>/dev/null)
 
-    # 兜底
-    [[ -z "$sub_port" ]] && {
+    sub_port=$(cat "$sub_port_file" 2>/dev/null)
+    if [[ -z "$sub_port" ]]; then
         sub_port=$(( $(jq -r '.inbounds[0].listen_port' "$config_dir") + 1 ))
         echo "$sub_port" > "$sub_port_file"
-    }
+    fi
 
+    # ==================================================
+    # 3. 构建 Base64 订阅内容（单一事实源）
+    # ==================================================
     content=$(base64 -w0 "$sub_file")
 
+    # ==================================================
+    # 4. 生成 Nginx 订阅配置
+    # ==================================================
     cat > "$sub_nginx_conf" <<EOF
 server {
     listen ${sub_port};
@@ -1427,19 +1592,25 @@ server {
 }
 EOF
 
-    # 建立软链
+    # ==================================================
+    # 5. 建立软链到 Nginx 配置目录（systemd / openrc 通用）
+    # ==================================================
     ln -sf "$sub_nginx_conf" "$nginx_conf_link"
 
-   if systemctl is-active nginx >/dev/null 2>&1; then
-        systemctl reload nginx
+    # ==================================================
+    # 6. 重载 Nginx（如正在运行）
+    # ==================================================
+    if command_exists nginx && service_active nginx; then
+        service_restart nginx
         green "订阅服务已生成并生效"
     else
         yellow "Nginx 未运行，订阅配置已生成，启动 Nginx 后生效"
     fi
-
-
-    
 }
+
+
+
+
 
 
 
@@ -1447,9 +1618,10 @@ disable_subscribe() {
     rm -f "$sub_nginx_conf"
     rm -f "$nginx_conf_link"
 
-    if systemctl is-active nginx >/dev/null 2>&1; then
-        systemctl reload nginx
+    if command_exists nginx && service_active nginx; then
+        service_restart nginx
     fi
+
 
     green "订阅服务已关闭"
 }
@@ -1479,8 +1651,23 @@ change_subscribe_port() {
     
 }
 
+detect_nginx_conf_dir
+init_nginx_paths() {
+  NGX_NGINX_DIR="$(detect_nginx_conf_dir)"
+  nginx_conf_link="$NGX_NGINX_DIR/singbox_hy2_sub.conf"
+  mkdir -p "$NGX_NGINX_DIR"
+}
+
+
+init_platform() {
+  init_nginx_paths
+}
+
 
 main_entry() {
+    detect_init
+    init_platform
+    
     is_interactive_mode
     if [[ $? -eq 1 ]]; then
         # ==================================================
