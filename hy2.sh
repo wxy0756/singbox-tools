@@ -7,21 +7,21 @@ export LANG=en_US.UTF-8
 # 说明：
 #   - 支持自动 / 交互模式
 #   - 支持跳跃端口
-#   - 支持环境变量：PORT / UUID / RANGE_PORTS / NODE_NAME
+#   - 支持环境变量：PORT （必填） / NGINX_PORT（必填） / UUID / RANGE_PORTS / NODE_NAME
 #  
 #  1、安装方式（2种）
 #     1.1 交互式菜单安装：
 #     curl -fsSL https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/hy2.sh -o hy2.sh && chmod +x hy2.sh && ./hy2.sh
 #    
 #     1.2 非交互式全自动安装:
-#     PORT=31020 RANGE_PORTS=40000-41000 NODE_NAME="小叮当的节点" bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/hy2.sh)
+#     PORT=31020  NGINX_PORT=31039 RANGE_PORTS=40000-41000 NODE_NAME="小叮当的节点" bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/hy2.sh)
 #
 # 
 #  
 # ======================================================================
 
 AUTHOR="littleDoraemon"
-VERSION="1.0.2"
+VERSION="1.0.3(2025-12-31)"
 
 
 SINGBOX_VERSION="1.12.13"
@@ -71,6 +71,15 @@ gradient() {
 red_input() { printf "\e[1;91m%s\033[0m" "$1"; }
 
 
+# ======================= 统一退出 =======================
+exit_script() {
+    echo ""
+    green "感谢使用本脚本,再见👋"
+    echo ""
+    exit 0
+}
+
+
 # ======================= pause（tuic5 同款） =======================
 pause_return() {
     echo ""
@@ -104,6 +113,40 @@ is_port_occupied(){
     return 1
   fi
 }
+
+# ======================= 端口输入 & 校验（通用） =======================
+prompt_valid_port() {
+    local var_name="$1"     # 变量名，如 PORT / NGINX_PORT
+    local prompt_text="$2"  # 提示文案
+    local port
+
+    # 取现有值（ENV 或上游赋值）
+    port="${!var_name}"
+
+    while true; do
+        if [[ -z "$port" ]]; then
+            read -rp "$(red_input "$prompt_text")" port
+        fi
+
+        if ! is_valid_port "$port"; then
+            red "端口无效，请输入 1-65535 之间的数字"
+            port=""
+            continue
+        fi
+
+        if is_port_occupied "$port"; then
+            red "端口 $port 已被占用，请重新输入"
+            port=""
+            continue
+        fi
+
+        break
+    done
+
+    # 回写到指定变量名
+    printf -v "$var_name" '%s' "$port"
+}
+
 
 is_valid_uuid(){
     [[ "$1" =~ ^[a-fA-F0-9]{8}-([a-fA-F0-9]{4}-){3}[a-fA-F0-9]{12}$ ]]
@@ -253,19 +296,19 @@ service_active() {
 load_env_vars() {
     while IFS='=' read -r key value; do
         case "$key" in
-            PORT|UUID|RANGE_PORTS|NODE_NAME)
+            PORT|UUID|RANGE_PORTS|NODE_NAME|NGINX_PORT)
                 if [[ -n "$value" && "$value" =~ ^[a-zA-Z0-9\.\-\:_/]+$ ]]; then
                     export "$key=$value"
                 fi
                 ;;
         esac
-    done < <(env | grep -E '^(PORT|UUID|RANGE_PORTS|NODE_NAME)=')
+    done < <(env | grep -E '^(PORT|UUID|RANGE_PORTS|NODE_NAME|NGINX_PORT)=')
 }
 load_env_vars
 
 # ======================= 模式判定 =======================
 is_interactive_mode() {
-    if [[ -n "$PORT" || -n "$UUID" || -n "$RANGE_PORTS" || -n "$NODE_NAME" ]]; then
+    if [[ -n "$PORT" || -n "$UUID" || -n "$RANGE_PORTS" || -n "$NODE_NAME"  || -n "$NGINX_PORT" ]]; then
         return 1   # 自动模式
     else
         return 0   # 交互模式
@@ -491,11 +534,7 @@ install_singbox() {
             :
         else
             yellow "PORT 无效或被占用，切换为交互输入"
-            while true; do
-                read -rp "$(red_input "请输入 HY2 主端口（UDP）：")" PORT
-                is_valid_port "$PORT" && ! is_port_occupied "$PORT" && break
-                red "端口无效或被占用"
-            done
+            prompt_valid_port "PORT" "请输入 HY2 主端口（UDP）："
         fi
 
         # -------- UUID --------
@@ -705,9 +744,6 @@ check_nodes() {
     local sub_port
     if [[ -f "$sub_port_file" ]]; then
         sub_port=$(cat "$sub_port_file")
-    else
-        sub_port=$((PORT + 1))
-        echo "$sub_port" > "$sub_port_file"
     fi
 
     # =====================================================
@@ -1010,7 +1046,7 @@ manage_singbox() {
                 return
                 ;;
             88)
-                exit 0
+                exit_script
                 ;;
             *)
                 red "无效输入"
@@ -1277,7 +1313,7 @@ manage_node_config_menu() {
                 return
                 ;;
             88)
-                exit 0
+                exit_script
                 ;;
             *)
                 red "无效输入"
@@ -1420,7 +1456,7 @@ manage_subscribe_menu() {
                 return
                 ;;
             88)
-                exit 0
+                exit_script
                 ;;
             *)
                 red "无效输入"
@@ -1490,7 +1526,7 @@ main_menu() {
                 manage_subscribe_menu
                 ;;
             88)
-                exit 0
+                exit_script
                 ;;
             *)
                 red "无效输入"
@@ -1566,11 +1602,14 @@ build_subscribe_conf() {
     # ==================================================
     uuid=$(jq -r '.inbounds[0].users[0].password' "$config_dir")
 
-    sub_port=$(cat "$sub_port_file" 2>/dev/null)
-    if [[ -z "$sub_port" ]]; then
-        sub_port=$(( $(jq -r '.inbounds[0].listen_port' "$config_dir") + 1 ))
-        echo "$sub_port" > "$sub_port_file"
-    fi
+    # ==================================================
+    # 2. 读取并校验 NGINX_PORT（必填）
+    # ==================================================
+    prompt_valid_port "NGINX_PORT" "请输入订阅服务端口 NGINX_PORT："
+
+    sub_port="$NGINX_PORT"
+    echo "$sub_port" > "$sub_port_file"
+
 
     # ==================================================
     # 3. 构建 Base64 订阅内容（单一事实源）
@@ -1627,17 +1666,8 @@ disable_subscribe() {
 }
 
 change_subscribe_port() {
-    read -rp "$(red_input "请输入新的订阅端口：")" new_port
+    prompt_valid_port "new_port" "请输入新的订阅端口："
 
-    if ! is_valid_port "$new_port"; then
-        red "端口无效"
-        return
-    fi
-
-    if is_port_occupied "$new_port"; then
-        red "端口已被占用"
-        return
-    fi
 
     echo "$new_port" > "$sub_port_file"
 
@@ -1651,7 +1681,7 @@ change_subscribe_port() {
     
 }
 
-detect_nginx_conf_dir
+
 init_nginx_paths() {
   NGX_NGINX_DIR="$(detect_nginx_conf_dir)"
   nginx_conf_link="$NGX_NGINX_DIR/singbox_hy2_sub.conf"
@@ -1673,6 +1703,11 @@ main_entry() {
         # ==================================================
         # 非交互式 / 自动模式
         # ==================================================
+        if [[ -z "$NGINX_PORT" ]]; then
+            err "自动模式下必须提供 NGINX_PORT，否则无法创建订阅服务"
+            exit 1
+        fi
+
         yellow "检测到自动模式（ENV 已传入），开始自动部署..."
 
         install_singbox
