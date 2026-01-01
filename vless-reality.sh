@@ -26,7 +26,7 @@ export LANG=en_US.UTF-8
 # ======================================================================
 
 AUTHOR="littleDoraemon"
-VERSION="v1.0.8(2026-01-01)"
+VERSION="v1.0.9(2026-01-01)"
 SINGBOX_VERSION="1.12.13"
 
 SERVICE_NAME="sing-box-vless-reality"
@@ -1345,9 +1345,9 @@ quick_install(){
 
 interactive_install(){
   # -------- 端口 --------
-  prompt_vless_port
+  
   prompt_nginx_port
-
+  prompt_vless_port
 
   # -------- UUID --------
   while true; do
