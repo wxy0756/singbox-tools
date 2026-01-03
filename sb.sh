@@ -372,14 +372,20 @@ cip(){
         yellow "Argo隧道信息 (使用 ${vlvm}-ws 端口: $(cat $HOME/agsb/argoport.log 2>/dev/null))"
         yellow "---------------------------------------------------------"
 
-        yellow "Argo域名: ${argodomain}"
-        [ -n "${nametn}" ] && echo -e "$(green "${nametn}")"
+        green "Argo域名: ${argodomain}"
+
+        if [ -n "${nametn}" ]; then
+            green ""
+            green "Argo固定隧道token:"
+            green "${nametn}"
+        fi
 
         green ""
-        purple "💣 443端口 Argo-TLS 节点 (优选IP可替换):"
+        green "💣 443端口 Argo-TLS 节点 (优选IP可替换):"
         green "${vmatls_link1}${tratls_link1}"
 
         yellow "---------------------------------------------------------"
+
 
     fi
     echo; echo "聚合节点: cat $HOME/agsb/jh.txt"; echo "========================================================="; echo "相关快捷方式如下："; showmode
