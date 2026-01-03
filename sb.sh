@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 export LANG=en_US.UTF-8
 [ -z "${trpt+x}" ] || { trp=yes; vmag=yes; }
 [ -z "${hypt+x}" ] || hyp=yes
@@ -39,10 +39,10 @@ gradient() {
     echo
 }
 # ================== 颜色函数 ==================
-VERSION="1.0.5(2026-01-03)"
+VERSION="1.0.1(2026-01-03)"
 showmode(){
     blue "===================================================="
-    gradient "       agsb 一键脚本（vmess/trojan Argo选1 ·  4 协议）"
+    gradient "       agsb 一键脚本（vmess/trojan Argo选1,vless+hy2直连）"
     green    "       作者：$AUTHOR"
     yellow   "       版本：$VERSION"
     blue "===================================================="
@@ -388,7 +388,7 @@ cip(){
 
 
     fi
-    echo; echo "聚合节点: cat $HOME/agsb/jh.txt"; echo "========================================================="; echo "相关快捷方式如下："; showmode
+    echo; yellow "聚合节点: cat $HOME/agsb/jh.txt"; yellow "========================================================="; purple "相关快捷方式如下："; showmode
 }
 cleandel(){
     for P in /proc/[0-9]*; do if [ -L "$P/exe" ]; then TARGET=$(readlink -f "$P/exe" 2>/dev/null); if echo "$TARGET" | grep -qE '/agsb/c|/agsb/sing-box'; then kill "$(basename "$P")" 2>/dev/null; fi; fi; done
