@@ -124,7 +124,7 @@ export oap=${oap:-''}
 # 默认值 cdn.7zz.cn  到时候可以改成www.visa.com
 DEFAULT_CF_HOST="cdn.7zz.cn"
 #
-DEFAULT_CF_PORT="443"
+DEFAULT_CF_PORT=443
 
 # 如果当前没传 cf_host，但本地有持久化文件，则读取
 if [ -z "${cf_host:-}" ] && [ -f "$HOME/agsb/cf_host" ]; then
