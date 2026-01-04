@@ -1,4 +1,22 @@
-# singbox 一键安装脚本（4协议，vmess argo/trojan argo +hy2+vless-Reality+tuic，这些协议可自由组合）
+# socks5 安装脚本和 singbox 一键安装脚本
+## 1、 socks5 安装以及卸载
+ 1.1、安装（可覆盖安装，端口号不指定则会随机端口，用户名和密码不指定也会随机生成）：
+ ```bash
+ PORT=端口号 USERNAME=用户名 PASSWORD=密码 bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/socks5.sh)
+```
+
+1.2、socks5 卸载：
+ ```bash
+bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/socks5.sh) uninstall
+ ```
+
+1.3、socks5 节点查看：
+ ```bash
+bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/socks5.sh) node
+ ```
+
+## 2、 ssingbox 安装以及卸载
+## singbox 一键安装脚本（4协议，vmess argo/trojan argo +hy2+vless-Reality+tuic，这些协议可自由组合）
 
 # 环境变量说明
 
@@ -199,6 +217,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/he
 
 12、所有的协议都出输出到聚合节点文件中: cat /root/agsb/jh.txt
 
+## 如何卸载呢？
+```
+bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/sb.sh)  del
+```
 ## 以此类推，最后给一下协议组合吧
 
 | 你设置了什么                   | 实际生成的节点                                          |
