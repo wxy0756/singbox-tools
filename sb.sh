@@ -418,7 +418,7 @@ cip(){
         public_key=$(sed -n '2p' "$HOME/agsb/reality.key" | awk '{print $2}')
         short_id=$(cat "$HOME/agsb/short_id")
         green "cip函数中的short_id,值为:$short_id"
-        
+
         vless_link="vless://${uuid}@${server_ip}:${port_vlr}?encryption=none&security=reality&sni=www.ua.edu&fp=chrome&flow=xtls-rprx-vision&publicKey=${public_key}&shortId=${short_id}#${sxname}vless-reality-$hostname"
         yellow "💣【 VLESS-Reality-Vision 】(直连协议)"; green "$vless_link" | tee -a "$HOME/agsb/jh.txt"; echo;
     fi
@@ -432,17 +432,17 @@ cip(){
             tratls_link1="trojan://${uuid}@cdn.7zz.cn:443?security=tls&type=ws&host=${argodomain}&path=%2F${uuid}-tr&sni=${argodomain}&fp=chrome#${sxname}trojan-ws-tls-argo-$hostname-443"
             vmatls_link1=""
         fi
-        sbtk=$(cat "$HOME/agsb/sbargotoken.log" 2>/dev/null); [ -n "$sbtk" ] && nametn="Argo固定隧道token:\n$sbtk"
+
+        sbtk=$(cat "$HOME/agsb/sbargotoken.log" 2>/dev/null); 
         yellow "---------------------------------------------------------"
         yellow "Argo隧道信息 (使用 ${vlvm}-ws 端口: $(cat $HOME/agsb/argoport.log 2>/dev/null))"
         yellow "---------------------------------------------------------"
 
         green "Argo域名: ${argodomain}"
 
-        if [ -n "${nametn}" ]; then
-            green ""
-            green "Argo固定隧道token:"
-            green "${nametn}"
+        #输出 argo token
+        if [ -n "${sbtk}" ]; then
+            green "Argo固定隧道token:\n${sbtk}"
         fi
 
         green ""
