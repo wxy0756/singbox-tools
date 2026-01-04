@@ -15,7 +15,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/he
 bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/socks5.sh) node
  ```
 
-## 2、 ssingbox 安装以及卸载
+## 2、 singbox 安装以及卸载
 ## singbox 一键安装脚本（4协议，vmess argo/trojan argo +hy2+vless-Reality+tuic，这些协议可自由组合）
 
 # 环境变量说明
