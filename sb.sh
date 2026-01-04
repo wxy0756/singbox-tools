@@ -219,6 +219,9 @@ insuuid(){
     uuid=$(cat "$HOME/agsb/uuid")
     yellow "UUID密码：$uuid"
 }
+
+
+
 installsb(){
     echo; echo "=========启用Sing-box内核========="
 
@@ -232,6 +235,7 @@ installsb(){
 "inbounds": [
 EOF
     insuuid
+    write2AgsbFolders
     openssl ecparam -genkey -name prime256v1 -out "$HOME/agsb/private.key" >/dev/null 2>&1
     openssl req -new -x509 -days 36500 -key "$HOME/agsb/private.key" -out "$HOME/agsb/cert.pem" -subj "/CN=${hy_sni}" >/dev/null 2>&1
 
@@ -400,6 +404,15 @@ EOF
         echo "agsb脚本进程未启动，安装失败" && exit
     fi
 }
+
+write2AgsbFolders(){
+    # Write environment variables to files for persistence
+    echo "${vl_sni}" > "$HOME/agsb/vl_sni"
+    echo "${hy_sni}" > "$HOME/agsb/hy_sni"
+    echo "${cdn_host}" > "$HOME/agsb/cdn_host"
+}
+
+
 agsbstatus(){
     purple "=========当前内核运行状态========="
     procs=$(find /proc/*/exe -type l 2>/dev/null | grep -E '/proc/[0-9]+/exe' | xargs -r readlink 2>/dev/null)
