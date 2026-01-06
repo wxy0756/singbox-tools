@@ -32,18 +32,17 @@ bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/he
 - 当argo=trpt 表示启用trojan的argo转发
 - 或者这个argo参数留空，表示不启用argo
 
-> ⚠️ Argo 只能用于 VMess / Trojan
+⚠️ Argo 只能用于 VMess / Trojan
 
-> ❌ 对 hypt / vlrt /tupt无效
+❌ 对 hypt / vlrt /tupt无效
 
 ## ③ agn / agk（Argo 固定隧道）
 
 - agn="argo固定隧道域名"
 - agk="argo隧道token"
 
-    - 当agk为普通字符串的场景：agk的值用英文双引号包裹""
-
-    - 当agk的值为json格式的时候，agk值只能用英文单引号包裹''
+- 当agk为普通字符串的场景：agk的值用英文双引号包裹""
+- 当agk的值为json格式的时候，agk值只能用英文单引号包裹''
 
 **是否必须？**
 - ❌ 不传 → 临时 Argo（trycloudflare）
@@ -200,7 +199,7 @@ argo="trpt" \
 agn="northCarolina.xxxx.xyz" \
 agk='{"AccountTag":"xxxxxxxxxxxxxx","TunnelSecret":"xxxxxxxxxxxxxx","TunnelID":"xxxxxxxxxxxxxx","Endpoint":""}' \
 name="小叮当-美国北卡"  \
-bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/sb000.sh) rep
+bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/sb.sh) rep
 ```
 
 
