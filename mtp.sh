@@ -16,13 +16,13 @@ export IP_MODE="${IP_MODE:-v4}"
 export INTERACTIVE_FLAG
 export INSTALL_MODE="${INSTALL_MODE:-'go'}"
 
-if [[ "$INSTALL_MODE" != "go" && "$INSTALL_MODE" != "py" ]]; then
-    echo -e "${YELLOW}无效的安装模式: $INSTALL_MODE。默认使用 'go' 模式.${PLAIN}"
-    INSTALL_MODE="go"
-fi
 
-
-
+install_mode_init(){
+    if [[ "$INSTALL_MODE" != "go" && "$INSTALL_MODE" != "py" ]]; then
+        echo -e "${YELLOW}无效的安装模式: $INSTALL_MODE。默认使用 'go' 模式.${PLAIN}"
+        INSTALL_MODE="go"
+    fi
+}
 
 
 # 全局配置
@@ -189,7 +189,7 @@ install_mtp_python() {
     fi
     chmod +x "$BIN_DIR/mtp-python"
 
-    if [ "$INTERACTIVE_FLAG" == 1 ]; then
+    if [ "$INTERACTIVE_FLAG" == 0 ]; then
         # Non-interactive installation: use default values or environment variables
         echo -e "Using domain: $DOMAIN"
         echo -e "Using port: $PORT"
@@ -316,7 +316,7 @@ install_mtp_go() {
     fi
     chmod +x "$BIN_DIR/mtg-go"
 
-   if [ "$INTERACTIVE_FLAG" == 1 ]; then
+   if [ "$INTERACTIVE_FLAG" == 0 ]; then
         # Non-interactive installation: use default values or environment variables
         echo -e "Using domain: $DOMAIN"
         echo -e "Using port: $PORT"
@@ -1017,14 +1017,13 @@ interactive_install_quick(){
     menu
 }
 
-# Default INSTALL_MODE to 'go' if not set
-export INSTALL_MODE="${INSTALL_MODE:-'go'}"
 
 # Function for non-interactive installation
 non_interactive_install_quick() {
     echo -e "${GREEN}开始无交互式安装...${PLAIN}"
     install_base_deps
 
+    install_mode_init
     # Check INSTALL_MODE and proceed accordingly
     if [[ "$INSTALL_MODE" == "go" ]]; then
         install_mtp_go  # Install Go version
