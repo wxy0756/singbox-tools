@@ -1025,27 +1025,46 @@ interactive_install_quick(){
     menu
 }
 
-
-main(){
+# Main function to parse arguments and perform actions
+main() {
     check_sys
 
-
-    if [ "$1" == "list" ]; then
-        show_detail_info
-        back_to_menu
-    elif [ "$1" == "del" ]; then  
-        delete_all
-    elif [ "$1" == "start" ]; then  
-        control_service start
-    elif [ "$1" == "stop" ]; then  
-        control_service stop
-    elif [ "$1" == "restart" ]; then  
-        control_service restart 
+    # Check if a command (del, list, start, stop) is provided
+    if [[ -n "$1" ]]; then
+        case "$1" in
+            del)
+                delete_all
+                ;;
+            list)
+                show_detail_info
+                ;;
+            start)
+                control_service start
+                ;;
+            stop)
+                control_service stop
+                ;;
+            restart)
+                control_service restart
+                ;;
+            *)
+                echo -e "${RED}未知命令: $1。有效命令: del, list, start, stop,restart${PLAIN}"
+                exit 1
+                ;;
+        esac
     else
-      # 区分交互式安装与非交互式安装
-      non_interactive_init
-      
-
+        # If no argument is provided, proceed with the installation (default behavior)
+        if [[ -z "$PORT" ]]; then
+            # If PORT is not set, it will be interactive installation
+            echo -e "${GREEN}未指定PORT，进入交互式安装模式...${PLAIN}"
+            INTERACTIVE_FLAG=1  # Interactive mode
+            menu  # Call the menu for interactive installation
+        else
+            # If PORT is set, it will be non-interactive installation
+            echo -e "${GREEN}已指定PORT，进入非交互式安装模式...${PLAIN}"
+            INTERACTIVE_FLAG=0  # Non-interactive mode
+            non_interactive_install_quick  # Proceed with non-interactive installation
+        fi
     fi
 }
 
