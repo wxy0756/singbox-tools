@@ -19,7 +19,7 @@ export INSTALL_MODE="${INSTALL_MODE:-'py'}"
 
 install_mode_init(){
     if [[ "$INSTALL_MODE" != "go" && "$INSTALL_MODE" != "py" ]]; then
-        echo -e "${YELLOW}无效的安装模式: $INSTALL_MODE。默认使用 'go' 模式.${PLAIN}"
+        echo -e "${YELLOW}无效的安装模式: $INSTALL_MODE。默认使用 'py' 模式.${PLAIN}"
         INSTALL_MODE="py"
     fi
 }
