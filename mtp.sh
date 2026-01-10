@@ -1037,6 +1037,7 @@ non_interactive_install_quick() {
     echo -e "${GREEN}无交互式安装完成！${PLAIN}"
 }
 
+
 # Main function to parse arguments and perform actions
 main() {
     check_sys
