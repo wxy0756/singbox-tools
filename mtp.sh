@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# 颜色定义
+RED='\033[31m'
+GREEN='\033[32m'
+YELLOW='\033[33m'
+BLUE='\033[36m'
+PLAIN='\033[0m'
+
 # Set environment variables (these will be used in both installation functions)
 export DOMAIN="${DOMAIN:-www.apple.com}"
 export PORT="${PORT:-443}"
@@ -31,12 +38,6 @@ if [ -z "$SCRIPT_PATH" ]; then
 fi
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 
-# 颜色定义
-RED='\033[31m'
-GREEN='\033[32m'
-YELLOW='\033[33m'
-BLUE='\033[36m'
-PLAIN='\033[0m'
 
 # 系统检测
 OS=""
