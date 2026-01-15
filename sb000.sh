@@ -178,13 +178,13 @@ create_bashrc_if_missing() {
 create_bashrc_if_missing
 
 # ================== 系统bashrc函数 ==================
-VERSION="1.0.2(2026-01-03)"
+VERSION="1.0.3(2026-01-15)"
 AUTHOR="littleDoraemon"
 
 # Show script mode
 showmode(){
     blue "===================================================="
-    gradient "       agsb 一键脚本（vmess/trojan Argo选1,vless+hy2+tuic 3个直连）"
+    gradient "       agsb 一键脚本（vmess/trojan Argo选1,vless+hy2+tuic+anytls 4个直连）"
     green    "       作者：$AUTHOR"
     yellow   "       版本：$VERSION"
     blue "===================================================="
