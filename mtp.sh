@@ -672,7 +672,7 @@ modify_mtg() {
     fi
     [ -z "$CUR_DOMAIN" ] && CUR_DOMAIN="(解析失败)"
 
-    echo -e "当前配置 (Go): 端口=[${GREEN}$CUR_PORT${PLAIN}] 域名=[${GREEN}$CUR_DOMAIN${PLAIN}]"
+    echo -e "当前配置 (Go): port=[${GREEN}$CUR_PORT${PLAIN}] domain=[${GREEN}$CUR_DOMAIN${PLAIN}]"
     
     read -p "请输入新端口 (留空保持不变): " NEW_PORT
     [ -z "$NEW_PORT" ] && NEW_PORT="$CUR_PORT"
@@ -709,7 +709,7 @@ modify_python() {
     CUR_PORT=$(grep "PORT =" "$CONFIG_DIR/config.py" | awk '{print $3}' | tr -d ' ')
     CUR_DOMAIN=$(grep "TLS_DOMAIN =" "$CONFIG_DIR/config.py" | awk -F= '{print $2}' | tr -d ' "')
     
-    echo -e "当前配置 (Python): 端口=[${GREEN}$CUR_PORT${PLAIN}] 域名=[${GREEN}$CUR_DOMAIN${PLAIN}]"
+    echo -e "当前配置 (Python): port=[${GREEN}$CUR_PORT${PLAIN}] domain=[${GREEN}$CUR_DOMAIN${PLAIN}]"
     
     read -p "请输入新端口 (留空保持不变): " NEW_PORT
     [ -z "$NEW_PORT" ] && NEW_PORT="$CUR_PORT"
