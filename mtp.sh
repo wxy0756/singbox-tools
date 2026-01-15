@@ -1,9 +1,5 @@
 #!/bin/bash
 
-export LANG="en_US.UTF-8"
-export LC_ALL="en_US.UTF-8"
-
-
 # 颜色定义
 RED='\033[31m'
 GREEN='\033[32m'
@@ -205,6 +201,36 @@ generate_secret() {
     head -c 32 /dev/urandom | od -A n -t x1 | tr -d ' \n'
 }
 
+
+# FULL_SECRET = ee + SECRET_HEX(64) + DOMAIN_HEX
+# 返回：DOMAIN 明文；解析失败返回 "(解析失败)"
+decode_domain_from_full_secret() {
+    local full="$1"
+    full="${full#ee}"               # 去掉 ee
+    local secret_hex_len=64         # 你这里固定是 32 bytes => 64 hex chars:contentReference[oaicite:1]{index=1}
+
+    local domain_hex="${full:$secret_hex_len}"
+
+    # 校验：必须是偶数长度且全是 hex
+    if [[ -z "$domain_hex" || $((${#domain_hex} % 2)) -ne 0 || ! "$domain_hex" =~ ^[0-9a-fA-F]+$ ]]; then
+        echo "(解析失败)"
+        return 1
+    fi
+
+    if command -v xxd >/dev/null 2>&1; then
+        printf '%s' "$domain_hex" | xxd -r -p 2>/dev/null || echo "(解析失败)"
+    else
+        printf '%b' "$(printf '%s' "$domain_hex" | sed 's/../\\x&/g')" 2>/dev/null || echo "(解析失败)"
+    fi
+}
+
+# 返回：BASE_SECRET（不带 ee，不带 domain 的那段 hex）
+decode_base_secret_from_full_secret() {
+    local full="$1"
+    full="${full#ee}"               # 去掉 ee
+    local secret_hex_len=64         # 你这里固定是 32 bytes => 64 hex chars:contentReference[oaicite:2]{index=2}
+    echo "${full:0:$secret_hex_len}"
+}
 
 
 
@@ -652,24 +678,13 @@ modify_mtg() {
         return
     fi
 
-    # 简单提取端口
-    CUR_PORT=$(echo "$CMD_LINE" | sed -n 's/.*:\([0-9]*\).*/\1/p')
+    # 简单提取端口 （只取最后一个 :PORT）
+    CUR_PORT=$(echo "$CMD_LINE" | grep -oE ':[0-9]{1,5}' | tail -n 1 | tr -d ':')
     # 提取完整Secret
     CUR_FULL_SECRET=$(echo "$CMD_LINE" | sed -n 's/.*\(ee[0-9a-fA-F]*\).*/\1/p' | awk '{print $1}')
     
-   # 使用 xxd 来反转十六进制字符串（假设 FULL_SECRET 是已经被编码的十六进制字符串）
-    CUR_DOMAIN=""
-    if [[ -n "$CUR_FULL_SECRET" ]]; then
-        DOMAIN_HEX=${CUR_FULL_SECRET:34}
-        if [[ -n "$DOMAIN_HEX" ]]; then
-            if command -v xxd >/dev/null 2>&1; then
-                CUR_DOMAIN=$(echo "$DOMAIN_HEX" | xxd -r -p)
-            else
-                ESCAPED_HEX=$(echo "$DOMAIN_HEX" | sed 's/../\\x&/g')
-                CUR_DOMAIN=$(printf "$ESCAPED_HEX")
-            fi
-        fi
-    fi
+
+    CUR_DOMAIN="$(decode_domain_from_full_secret "$CUR_FULL_SECRET")"
 
 
     [ -z "$CUR_DOMAIN" ] && CUR_DOMAIN="(解析失败)"
@@ -815,55 +830,54 @@ delete_config() {
 # --- 查看连接信息逻辑 ---
 show_detail_info() {
     echo ""
-  
+
+    # ---------------- Go 版信息 ----------------
     if [[ "$INIT_SYSTEM" == "systemd" ]]; then
         CMD_LINE=$(grep "ExecStart" /etc/systemd/system/mtg.service 2>/dev/null)
     else
         CMD_LINE=$(grep "command_args" /etc/init.d/mtg 2>/dev/null)
     fi
-    
+
     if [ -n "$CMD_LINE" ]; then
         echo -e "${BLUE}=== Go 版信息 ===${PLAIN}"
 
-        PORT=$(echo "$CMD_LINE" | sed -n 's/.*:\([0-9]*\).*/\1/p')
-        FULL_SECRET=$(echo "$CMD_LINE" | sed -n 's/.*\(ee[0-9a-fA-F]*\).*/\1/p' | awk '{print $1}')
-        
-        # 还原域名
+        # 更稳的端口提取：取最后一个 :PORT
+        PORT=$(echo "$CMD_LINE" | grep -oE ':[0-9]{1,5}' | tail -n 1 | tr -d ':')
+
+        # 提取完整 FULL_SECRET（以 ee 开头的那段）
+        FULL_SECRET=$(echo "$CMD_LINE" | grep -oE 'ee[0-9a-fA-F]+' | head -n 1)
+
+        # 还原域名 / 基础 Secret
         CUR_DOMAIN="(不可解析)"
+        BASE_SECRET=""
+
         if [[ -n "$FULL_SECRET" ]]; then
-            DOMAIN_HEX=${FULL_SECRET:34}
-            if [[ -n "$DOMAIN_HEX" ]]; then
-                 if command -v xxd >/dev/null 2>&1; then
-                     CUR_DOMAIN=$(echo "$DOMAIN_HEX" | xxd -r -p)
-                 else
-                     ESCAPED_HEX=$(echo "$DOMAIN_HEX" | sed 's/../\\x&/g')
-                     CUR_DOMAIN=$(printf "$ESCAPED_HEX")
-                 fi
-            fi
+            CUR_DOMAIN="$(decode_domain_from_full_secret "$FULL_SECRET")"
+            BASE_SECRET="$(decode_base_secret_from_full_secret "$FULL_SECRET")"
+            [[ -z "$CUR_DOMAIN" ]] && CUR_DOMAIN="(不可解析)"
         fi
-        
-        # 还原基础 Secret
-        BASE_SECRET=${FULL_SECRET:2:32}
-        # 还原 IP 模式 (简单推断)
+
+        # 还原 IP 模式（简单推断）
         CUR_IP_MODE="v4"
         if echo "$CMD_LINE" | grep -q "only-ipv6"; then CUR_IP_MODE="v6"; fi
         if echo "$CMD_LINE" | grep -q "prefer-ipv6"; then CUR_IP_MODE="dual"; fi
-        
+
         show_info_mtg "$PORT" "$BASE_SECRET" "$CUR_DOMAIN" "$CUR_IP_MODE"
     else
         echo -e "${BLUE}=== Go 版信息 ===${PLAIN}"
         echo -e "${YELLOW}未安装或未运行${PLAIN}"
     fi
-    
+
     echo -e ""
-   
+
+    # ---------------- Python 版信息 ----------------
     if [ -f "$CONFIG_DIR/config.py" ]; then
         echo -e "${BLUE}=== Python 版信息 ===${PLAIN}"
 
         PORT=$(grep "PORT =" "$CONFIG_DIR/config.py" | head -n 1 | awk '{print $3}' | tr -d ' ')
         SECRET=$(grep "\"tg\":" "$CONFIG_DIR/config.py" | head -n 1 | awk -F: '{print $2}' | tr -d ' "')
         DOMAIN=$(grep "TLS_DOMAIN =" "$CONFIG_DIR/config.py" | awk -F= '{print $2}' | tr -d ' "')
-        
+
         # 获取 IP 模式
         PY_IP_MODE="v4"
         if grep -q "LISTEN_ADDR_IPV6 = \"::\"" "$CONFIG_DIR/config.py"; then
@@ -873,19 +887,20 @@ show_detail_info() {
                 PY_IP_MODE="v6"
             fi
         fi
-        
-        # 获取 V6 端口
+
+        # 获取 V6 端口（若没有单独定义，则用 PORT）
         PORT_V6=$(grep "PORT_IPV6 =" "$CONFIG_DIR/config.py" | awk '{print $3}' | tr -d ' ')
         [ -z "$PORT_V6" ] && PORT_V6="$PORT"
-        
+
         show_info_python "$PORT" "$SECRET" "$DOMAIN" "$PY_IP_MODE" "$PORT_V6"
     else
         echo -e "${BLUE}=== Python 版信息 ===${PLAIN}"
         echo -e "${YELLOW}未安装配置文件${PLAIN}"
     fi
-    
+
     back_to_menu
 }
+
 
 # --- 信息显示 ---
 show_info_python() {
