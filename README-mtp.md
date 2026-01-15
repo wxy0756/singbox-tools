@@ -15,7 +15,7 @@ PORT=31009 bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-to
 ### 高级用法
 
 ```
-PORT=31009 DOMAIN='你的伪装域名' IP_MODE='v4/v6/dual' INSTALL_MODE='go/py' SECRET='' PORT_V6='' bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/mtp.sh)
+PORT=32000 DOMAIN='你的伪装域名' IP_MODE='v4/v6/dual' INSTALL_MODE='go/py' SECRET='' PORT_V6='?'   bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/mtp.sh) rep
 ```
 
 ## 环境变量说明
@@ -34,16 +34,18 @@ PORT=31009 DOMAIN='你的伪装域名' IP_MODE='v4/v6/dual' INSTALL_MODE='go/py'
 #### 4️⃣、 INSTALL_MODE='?'  (安装方式,go版或者python版)
 
 **值含义**
-- go → 使用go版安装
-- py → 使用python版安装(不填默认使用python版安装)
+- go → 使用go版安装(不填默认使用go版安装,强烈推荐安装这个)
+- py → 使用python版安装
 
 
 #### 5️⃣、 SECRET='?'  (安装密钥,不会就留空，留空就随机产生密钥,因为go版的时候，密钥里面会包含域名信息，所以，不会请不要乱填)
 
 
 
-#### 6️⃣、 PORT_V6='?'  (当IP_MODE='dual'时，PORT_V6才会启用，IP_MODE='dual'，如果PORT_V6不填，则 PORT_V6会取PORT的值)
+#### 6️⃣、 PORT_V6='?'  (当IP_MODE='dual'时，PORT_V6才会启用「而且是python模式下才有用-只有pyhton版的dual才支持分端口，go版，这个参数直接默认等于v4端口」，IP_MODE='dual'，如果PORT_V6不填，则 PORT_V6会取PORT的值)
 
+
+#### 7️⃣、 脚本后边的rep、list参数代表覆盖安装和查看节点信息，什么都不跟的时候代表默认安装。
 
 
 ### 2、卸载已安装的服务：
@@ -75,4 +77,3 @@ bash <(curl -Ls https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/he
 感谢以下开发者的贡献：
 
 - [0xdabiaoge大佬](https://github.com/0xdabiaoge/MTProxy)
-
