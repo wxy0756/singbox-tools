@@ -1,5 +1,9 @@
 #!/bin/bash
 
+export LANG="en_US.UTF-8"
+export LC_ALL="en_US.UTF-8"
+
+
 # 颜色定义
 RED='\033[31m'
 GREEN='\033[32m'
@@ -809,7 +813,7 @@ delete_config() {
 # --- 查看连接信息逻辑 ---
 show_detail_info() {
     echo ""
-    echo -e "${BLUE}=== Go 版信息 ===${PLAIN}"
+  
     if [[ "$INIT_SYSTEM" == "systemd" ]]; then
         CMD_LINE=$(grep "ExecStart" /etc/systemd/system/mtg.service 2>/dev/null)
     else
@@ -817,6 +821,8 @@ show_detail_info() {
     fi
     
     if [ -n "$CMD_LINE" ]; then
+        echo -e "${BLUE}=== Go 版信息 ===${PLAIN}"
+
         PORT=$(echo "$CMD_LINE" | sed -n 's/.*:\([0-9]*\).*/\1/p')
         FULL_SECRET=$(echo "$CMD_LINE" | sed -n 's/.*\(ee[0-9a-fA-F]*\).*/\1/p' | awk '{print $1}')
         
@@ -843,12 +849,15 @@ show_detail_info() {
         
         show_info_mtg "$PORT" "$BASE_SECRET" "$CUR_DOMAIN" "$CUR_IP_MODE"
     else
+        echo -e "${BLUE}=== Go 版信息 ===${PLAIN}"
         echo -e "${YELLOW}未安装或未运行${PLAIN}"
     fi
     
     echo -e ""
-    echo -e "${BLUE}=== Python 版信息 ===${PLAIN}"
+   
     if [ -f "$CONFIG_DIR/config.py" ]; then
+        echo -e "${BLUE}=== Python 版信息 ===${PLAIN}"
+
         PORT=$(grep "PORT =" "$CONFIG_DIR/config.py" | head -n 1 | awk '{print $3}' | tr -d ' ')
         SECRET=$(grep "\"tg\":" "$CONFIG_DIR/config.py" | head -n 1 | awk -F: '{print $2}' | tr -d ' "')
         DOMAIN=$(grep "TLS_DOMAIN =" "$CONFIG_DIR/config.py" | awk -F= '{print $2}' | tr -d ' "')
@@ -869,6 +878,7 @@ show_detail_info() {
         
         show_info_python "$PORT" "$SECRET" "$DOMAIN" "$PY_IP_MODE" "$PORT_V6"
     else
+        echo -e "${BLUE}=== Python 版信息 ===${PLAIN}"
         echo -e "${YELLOW}未安装配置文件${PLAIN}"
     fi
     
@@ -923,7 +933,7 @@ show_info_mtg() {
     HEX_DOMAIN=$(echo -n "$3" | od -A n -t x1 | tr -d ' \n')
     FULL_SECRET="ee$2$HEX_DOMAIN"
     echo -e "=============================="
-    echo -e "${GREEN}Go 版连接信息${PLAIN}"
+    echo -e "${GREEN}Go 版连接信息如下:${PLAIN}"
     echo -e "端口: $1"
     echo -e "Secret: $FULL_SECRET"
     echo -e "Domain: $3"
@@ -932,7 +942,7 @@ show_info_mtg() {
     if [[ "$IP_MODE" == "v4" || "$IP_MODE" == "dual" ]]; then
         if [ -n "$IPV4" ]; then
             echo -e "${GREEN}IPv4 链接:${PLAIN}"
-            echo -e "tg://proxy?server=$IPV4&port=$1&secret=$FULL_SECRET"
+            echo -e "${GREEN}tg://proxy?server=$IPV4&port=$1&secret=$FULL_SECRET${PLAIN}"
         else
             echo -e "${RED}未检测到 IPv4 地址${PLAIN}"
         fi
@@ -940,8 +950,8 @@ show_info_mtg() {
     
     if [[ "$IP_MODE" == "v6" || "$IP_MODE" == "dual" ]]; then
         if [ -n "$IPV6" ]; then
-            echo -e "${GREEN}IPv6 链接:${PLAIN}"
-            echo -e "tg://proxy?server=$IPV6&port=$1&secret=$FULL_SECRET"
+            echo -e "${YELLOW}IPv6 链接:${PLAIN}"
+            echo -e "${YELLOW}tg://proxy?server=$IPV6&port=$1&secret=$FULL_SECRET${PLAIN}"
         else
             echo -e "${YELLOW}未检测到 IPv6 地址${PLAIN}"
         fi
