@@ -1,5 +1,8 @@
 #!/bin/bash
 
+VERSION="1.0.1(2026-01-10)"
+AUTHOR="LittleDoraemon"
+
 # 颜色定义
 RED='\033[31m'
 GREEN='\033[32m'
@@ -1092,17 +1095,27 @@ back_to_menu() {
     menu
 }
 
+exit_script() {
+    echo ""
+    green "感谢使用本脚本,再见👋"
+    echo ""
+    exit 0
+}
+
 # --- 菜单 ---
 menu() {
     check_sys
     clear
+    AUTHOR
     echo -e "=================================="
     echo -e "     MTProxy 部署管理脚本"
+    echo -e "     Author: ${GREEN}$AUTHOR${PLAIN}"
+    echo -e "     Version: ${YELLOW}$VERSION${PLAIN}"
     echo -e "=================================="
     echo -e "Go     版: $(get_service_status_str mtg)"
     echo -e "Python 版: $(get_service_status_str mtp-python)"
     echo -e "=================================="
-    echo -e "${GREEN}1.${PLAIN} 安装/重装 Go 版"
+    echo -e "${GREEN}1.${PLAIN} 安装/重装 Go 版(强烈推荐)"
     echo -e "${GREEN}2.${PLAIN} 安装/重装 Python 版"
     echo -e "----------------------------------"
     echo -e "${GREEN}3.${PLAIN} 查看详细连接信息"
@@ -1114,7 +1127,7 @@ menu() {
     echo -e "${GREEN}8.${PLAIN} 重启服务"
     echo -e "----------------------------------"
     echo -e "${GREEN}9.${PLAIN} 卸载全部并清理"
-    echo -e "${GREEN}0.${PLAIN} 退出"
+    echo -e "${GREEN}88.${PLAIN} 退出脚本"
     echo -e "=================================="
     read -p "请选择: " choice
     
@@ -1130,7 +1143,7 @@ menu() {
         7) control_service stop; back_to_menu ;;
         8) control_service restart; back_to_menu ;;
         9) delete_all; exit 0 ;;
-        0) exit 0 ;;
+        88) exit_script ;;
         *) echo -e "${RED}无效此选项${PLAIN}"; menu ;;
     esac
 }
