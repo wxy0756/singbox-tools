@@ -1108,7 +1108,7 @@ menu() {
     clear
     AUTHOR
     echo -e "=================================="
-    echo -e "     MTProxy 部署管理脚本"
+    echo -e "     MTProxy 一键部署管理脚本"
     echo -e "     Author: ${GREEN}$SCRIPT_AUTHOR${PLAIN}"
     echo -e "     Version: ${YELLOW}$SCRIPT_VERSION${PLAIN}"
     echo -e "=================================="
