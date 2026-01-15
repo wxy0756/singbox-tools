@@ -657,19 +657,21 @@ modify_mtg() {
     # 提取完整Secret
     CUR_FULL_SECRET=$(echo "$CMD_LINE" | sed -n 's/.*\(ee[0-9a-fA-F]*\).*/\1/p' | awk '{print $1}')
     
-    # 尝试还原域名
+   # 使用 xxd 来反转十六进制字符串（假设 FULL_SECRET 是已经被编码的十六进制字符串）
     CUR_DOMAIN=""
     if [[ -n "$CUR_FULL_SECRET" ]]; then
         DOMAIN_HEX=${CUR_FULL_SECRET:34}
         if [[ -n "$DOMAIN_HEX" ]]; then
-             if command -v xxd >/dev/null 2>&1; then
-                 CUR_DOMAIN=$(echo "$DOMAIN_HEX" | xxd -r -p)
-             else
-                 ESCAPED_HEX=$(echo "$DOMAIN_HEX" | sed 's/../\\x&/g')
-                 CUR_DOMAIN=$(printf "$ESCAPED_HEX")
-             fi
+            if command -v xxd >/dev/null 2>&1; then
+                CUR_DOMAIN=$(echo "$DOMAIN_HEX" | xxd -r -p)
+            else
+                ESCAPED_HEX=$(echo "$DOMAIN_HEX" | sed 's/../\\x&/g')
+                CUR_DOMAIN=$(printf "$ESCAPED_HEX")
+            fi
         fi
     fi
+
+
     [ -z "$CUR_DOMAIN" ] && CUR_DOMAIN="(解析失败)"
 
     echo -e "当前配置 (Go): port=[${GREEN}$CUR_PORT${PLAIN}] domain=[${GREEN}$CUR_DOMAIN${PLAIN}]"
