@@ -7,20 +7,39 @@ YELLOW='\033[33m'
 BLUE='\033[36m'
 PLAIN='\033[0m'
 
+white(){ echo -e "\033[1;37m$1\033[0m"; }
+red(){ echo -e "\e[1;91m$1\033[0m"; }
+green(){ echo -e "\e[1;32m$1\033[0m"; }
+yellow(){ echo -e "\e[1;33m$1\033[0m"; }
+blue(){ echo -e "\e[1;34m$1\033[0m"; }
+purple(){ echo -e "\e[1;35m$1\033[0m"; }
+err(){ red "[错误] $1" >&2; }
+
+
 # Set environment variables (these will be used in both installation functions)
 export DOMAIN="${DOMAIN:-www.apple.com}"
-export PORT="${PORT:-443}"
-export PORT_V6="${PORT_V6:-443}"
+export PORT="${PORT:-}"
+export PORT_V6="${PORT_V6:-}"
 export SECRET="${SECRET:-}"
 export IP_MODE="${IP_MODE:-v4}"
-export INTERACTIVE_FLAG
-export INSTALL_MODE="${INSTALL_MODE:-'py'}"
 
+export INSTALL_MODE="${INSTALL_MODE:-go}"
+
+INTERACTIVE_FLAG=1
+
+
+# 全局输出变量：
+# - SUGGESTED_PORTS: "30001 30002 30003"（空则表示没找到列表，只有随机推荐）
+# - SUGGESTED_RADIUS: 5 / 20 / random / invalid
+# - SUGGESTED_RANDOM: 随机推荐端口（仅当找不到附近可用端口时）
+SUGGESTED_PORTS=""
+SUGGESTED_RADIUS=""
+SUGGESTED_RANDOM=""
 
 install_mode_init(){
     if [[ "$INSTALL_MODE" != "go" && "$INSTALL_MODE" != "py" ]]; then
-        echo -e "${YELLOW}无效的安装模式: $INSTALL_MODE。默认使用 'py' 模式.${PLAIN}"
-        INSTALL_MODE="py"
+        echo -e "${YELLOW}无效的安装模式: $INSTALL_MODE。默认使用 'go' 模式.${PLAIN}"
+        INSTALL_MODE="go"
     fi
 }
 
@@ -62,13 +81,62 @@ is_port_occupied(){
   fi
 }
 
-white(){ echo -e "\033[1;37m$1\033[0m"; }
-red(){ echo -e "\e[1;91m$1\033[0m"; }
-green(){ echo -e "\e[1;32m$1\033[0m"; }
-yellow(){ echo -e "\e[1;33m$1\033[0m"; }
-blue(){ echo -e "\e[1;34m$1\033[0m"; }
-purple(){ echo -e "\e[1;35m$1\033[0m"; }
-err(){ red "[错误] $1" >&2; }
+
+# 在给定半径内搜集可用端口（最多返回 max_count 个）
+collect_free_ports() {
+    local base="$1"
+    local radius="$2"
+    local max_count="${3:-5}"
+    local start=$((base - radius))
+    local end=$((base + radius))
+    local found=()
+
+    (( start < 1 )) && start=1
+    (( end > 65535 )) && end=65535
+
+    # 从近到远：base-1, base+1, base-2, base+2 ...
+    local d
+    for ((d=1; d<=radius; d++)); do
+        local p1=$((base - d))
+        local p2=$((base + d))
+
+        if (( p1 >= start )) && ! is_port_occupied "$p1"; then
+            found+=("$p1")
+            (( ${#found[@]} >= max_count )) && break
+        fi
+        if (( p2 <= end )) && ! is_port_occupied "$p2"; then
+            found+=("$p2")
+            (( ${#found[@]} >= max_count )) && break
+        fi
+    done
+
+    if (( ${#found[@]} > 0 )); then
+        echo "${found[*]}"
+        return 0
+    fi
+    return 1
+}
+
+# 按多个 radius 依次尝试，返回："<命中的radius>|<端口列表>"
+# 用途： 从参数2的数组中依次尝试，返回第一个命中的端口列表，这个列表里面最多返回 参数3 也就是max_count 个值
+suggest_ports() {
+    local base="$1"
+    local radii="$2"          # 例如: "5 20"
+    local max_count="${3:-5}"
+    local r ports
+
+    for r in $radii; do
+        ports="$(collect_free_ports "$base" "$r" "$max_count")" && {
+            echo "${r}|${ports}"
+            return 0
+        }
+    done
+    return 1
+}
+
+
+
+
 
 check_sys() {
     if [ -f /etc/os-release ]; then
@@ -130,49 +198,11 @@ get_public_ipv6() {
 }
 
 generate_secret() {
-    head -c 16 /dev/urandom | od -A n -t x1 | tr -d ' \n'
+    head -c 32 /dev/urandom | od -A n -t x1 | tr -d ' \n'
 }
 
 
-check_and_handle_port_usage() {
-    local port=$1
-    # Check if port is occupied
-    if sudo ss -tuln | grep ":$port "; then
-        echo -e "${YELLOW}端口 $port 已经被占用！${PLAIN}"
 
-        # Check if the port is being used by mtg service using lsof
-        pid=$(sudo lsof -t -i:$port)
-        
-        # If a process is using the port
-        if [ -n "$pid" ]; then
-            service_pid=$(ps -p $pid -o comm=)
-            
-            # Check if it's the same mtg-go service
-            if [[ "$service_pid" == "mtg-go" ]]; then
-                echo -e "${GREEN}端口 $port 已被 mtg 服务占用，无需停止服务。${PLAIN}"
-            else
-                # If not mtg-go, ask the user to overwrite or cancel
-                echo -e "${YELLOW}是否强制覆盖该进程并继续使用此端口？[y/N](默认 N，直接回车视为N): ${PLAIN}"
-                read -r answer
-                if [[ -z "$answer" || "$answer" == "n" || "$answer" == "N" ]]; then
-                    echo -e "${RED}端口占用，安装被取消。${PLAIN}"
-                    exit 1
-                elif [[ "$answer" == "y" || "$answer" == "Y" ]]; then
-                    # Stop the conflicting service/process
-                    echo -e "${YELLOW}找到占用端口 $port 的进程，正在停止它...${PLAIN}"
-                    sudo kill -9 "$pid"
-                    sleep 3
-                    echo -e "${GREEN}进程已停止，继续安装。${PLAIN}"
-                else
-                    echo -e "${RED}无效输入，安装被取消。${PLAIN}"
-                    exit 1
-                fi
-            fi
-        fi
-    else
-        echo -e "${GREEN}端口 $port 可用，继续安装。${PLAIN}"
-    fi
-}
 
 # --- IP 模式选择 ---
 select_ip_mode() {
@@ -187,6 +217,116 @@ select_ip_mode() {
         *) echo "v4" ;;
     esac
 }
+
+ inputs_noninteractive() {
+     # 非交互：只用环境变量 + 自动生成，不要任何 read
+     DOMAIN="${DOMAIN:-www.apple.com}"
+     IP_MODE="${IP_MODE:-v4}"
+ 
+     # 端口兜底：注意这里才给默认值，不要在文件顶部 export PORT=443
+     PORT="${PORT:-443}"
+ 
+
+    # 调用新的端口检查函数，避免直接退出
+    check_port_or_suggest_noninteractive "$PORT"
+    if [[ "$IP_MODE" == "dual" && -n "$PORT_V6" && "$PORT_V6" != "$PORT" ]]; then
+        check_port_or_suggest_noninteractive "$PORT_V6"
+    fi
+ 
+     SECRET="${SECRET:-$(generate_secret)}"
+ }
+
+
+
+inputs_interactive() {
+    # 交互：所有 read / 选择都在这里
+    read -p "$(yellow "请输入伪装域名 (默认: ${DOMAIN:-www.apple.com}): ")" tmp
+    DOMAIN="${tmp:-${DOMAIN:-www.apple.com}}"
+
+    IP_MODE="$(select_ip_mode)"
+
+    if [[ "$IP_MODE" == "dual" ]]; then
+        read -p "$(yellow "请输入 IPv4 端口 (默认: ${PORT:-443}): ")" tmp
+        PORT="${tmp:-${PORT:-443}}"
+
+        read -p "$(yellow "请输入 IPv6 端口 (默认: ${PORT_V6:-$PORT}): ")" tmp
+        PORT_V6="${tmp:-${PORT_V6:-$PORT}}"
+    else
+        read -p "$(yellow "请输入端口 (默认: ${PORT:-443}): ")" tmp
+        PORT="${tmp:-${PORT:-443}}"
+        PORT_V6=""
+    fi
+
+    # 交互模式也允许用户预先 export SECRET，不填就自动生成
+    if [[ -z "$SECRET" ]]; then
+        SECRET="$(generate_secret)"
+    fi
+    echo -e "${GREEN}生成的密钥: $SECRET${PLAIN}"
+}
+
+
+
+
+
+check_port_or_prompt_interactive() {
+    local port="$1"
+
+    # 每次调用先清空
+    SUGGESTED_PORTS=""
+    SUGGESTED_RADIUS=""
+    SUGGESTED_RANDOM=""
+
+    # 非法端口：当成不可用，返回 1，并给个随机建议
+    if ! [[ "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+        SUGGESTED_RADIUS="invalid"
+        # 给一个随机端口建议
+        local rnd tries=0
+        while (( tries < 200 )); do
+            rnd=$(( 20000 + (RANDOM % 40001) ))  # 20000-60000
+            if ! is_port_occupied "$rnd"; then
+                SUGGESTED_RANDOM="$rnd"
+                break
+            fi
+            ((tries++))
+        done
+        [[ -z "$SUGGESTED_RANDOM" ]] && SUGGESTED_RANDOM="54321"
+        return 1
+    fi
+
+    # 未占用 => OK
+    if ! is_port_occupied "$port"; then
+        return 0
+    fi
+
+    # 占用 => 生成推荐
+    local res radius ports
+    if res="$(suggest_ports "$port" "5 20" 5)"; then
+        radius="${res%%|*}"
+        ports="${res#*|}"
+        SUGGESTED_RADIUS="$radius"
+        SUGGESTED_PORTS="$ports"
+        return 1
+    fi
+
+    # 附近没找到 => 随机推荐一个未占用端口
+    SUGGESTED_RADIUS="random"
+    local rnd tries=0
+    while (( tries < 200 )); do
+        rnd=$(( 20000 + (RANDOM % 40001) ))
+        if ! is_port_occupied "$rnd"; then
+            SUGGESTED_RANDOM="$rnd"
+            break
+        fi
+        ((tries++))
+    done
+    [[ -z "$SUGGESTED_RANDOM" ]] && SUGGESTED_RANDOM="54321"
+    return 1
+}
+
+
+
+
+
 
 # --- Python 版安装逻辑 ---
 install_mtp_python() {
@@ -214,6 +354,10 @@ install_mtp_python() {
         FOUND_PATH="${SCRIPT_DIR}/${TARGET_BIN}"
     fi
 
+
+    control_service stop mtp-python
+
+
     if [ -n "$FOUND_PATH" ]; then
         echo -e "${GREEN}检测到本地二进制文件: ${FOUND_PATH}${PLAIN}"
         cp "${FOUND_PATH}" "$BIN_DIR/mtp-python"
@@ -229,56 +373,7 @@ install_mtp_python() {
         echo -e "${GREEN}下载并安装成功。${PLAIN}"
     fi
     chmod +x "$BIN_DIR/mtp-python"
-
-    if [ "$INTERACTIVE_FLAG" == 0 ]; then
-        # Non-interactive installation: use default values or environment variables
-        echo -e "Using domain: $DOMAIN"
-        echo -e "Using port: $PORT"
-        echo -e "Using IPv6 port: $PORT_V6"
-        echo -e "Using secret: $SECRET"
-        echo -e "Using IP mode: $IP_MODE"
-
-
-        IP_MODE="${IP_MODE:-'v4'}"
-
-        if [[ "$IP_MODE" == "dual" ]]; then
-            [ -z "$PORT" ] && PORT=443
-            [ -z "$PORT_V6" ] && PORT_V6="$PORT"
-
-        elif [[ "$IP_MODE" == "v4" ]]; then
-            [ -z "$PORT" ] && PORT=443
-            PORT_V6=""
-        elif [[ "$IP_MODE" == "v6" ]]; then
-            [ -z "$PORT" ] && PORT=443
-            PORT_V6=""    
-        else
-            echo -e "${RED}无效的 IP 模式: $IP_MODE${PLAIN}"
-            exit 1
-        fi
-
-    else
-        # Interactive installation: prompt user for inputs
-        read -p "请输入伪装域名 (默认 $DOMAIN): " DOMAIN
-        [ -z "$DOMAIN" ] && DOMAIN="www.apple.com"
-        
-        IP_MODE=$(select_ip_mode)
-        
-        if [[ "$IP_MODE" == "dual" ]]; then
-            read -p "请输入 IPv4 端口 (默认 $PORT): " PORT
-            [ -z "$PORT" ] && PORT=443
-            read -p "请输入 IPv6 端口 (默认 $PORT): " PORT_V6
-            [ -z "$PORT_V6" ] && PORT_V6="$PORT"
-        else
-            read -p "请输入端口 (默认 $PORT): " PORT
-            [ -z "$PORT" ] && PORT=443
-            PORT_V6=""
-        fi
-
-    fi
-
-        
-    SECRET="${SECRET:-$(generate_secret)}"
-    echo -e "${GREEN}生成的密钥: $SECRET${PLAIN}"
+    
 
     # Generate config.py file with the selected values
     mkdir -p "$CONFIG_DIR"
@@ -345,6 +440,9 @@ install_mtp_go() {
         FOUND_PATH="${SCRIPT_DIR}/${TARGET_NAME}"
     fi
     
+   control_service stop mtg
+
+
     if [ -n "$FOUND_PATH" ]; then
         echo -e "${GREEN}检测到本地二进制文件: ${FOUND_PATH}${PLAIN}"
         cp "${FOUND_PATH}" "$BIN_DIR/mtg-go"
@@ -359,61 +457,6 @@ install_mtp_go() {
     fi
     chmod +x "$BIN_DIR/mtg-go"
 
-   if [ "$INTERACTIVE_FLAG" == 0 ]; then
-        # Non-interactive installation: use default values or environment variables
-        echo -e "Using domain: $DOMAIN"
-        echo -e "Using port: $PORT"
-        echo -e "Using IPv6 port: $PORT_V6"
-        echo -e "Using secret: $SECRET"
-        echo -e "Using IP mode: $IP_MODE"
-
-
-        IP_MODE="${IP_MODE:-'v4'}"
-
-        if [[ "$IP_MODE" == "dual" ]]; then
-            [ -z "$PORT" ] && PORT=443
-            [ -z "$PORT_V6" ] && PORT_V6="$PORT"
-
-        elif [[ "$IP_MODE" == "v4" ]]; then
-            [ -z "$PORT" ] && PORT=443
-            PORT_V6=""
-        elif [[ "$IP_MODE" == "v6" ]]; then
-            [ -z "$PORT" ] && PORT=443
-            PORT_V6=""    
-        else
-            echo -e "${RED}无效的 IP 模式: $IP_MODE${PLAIN}"
-            exit 1
-        fi
-
-    else
-        # Interactive installation: prompt user for inputs
-        read -p "请输入伪装域名 (默认 $DOMAIN): " DOMAIN
-        [ -z "$DOMAIN" ] && DOMAIN="www.apple.com"
-        
-        IP_MODE=$(select_ip_mode)
-        
-        if [[ "$IP_MODE" == "dual" ]]; then
-            read -p "请输入 IPv4 端口 (默认 $PORT): " PORT
-            [ -z "$PORT" ] && PORT=443
-            read -p "请输入 IPv6 端口 (默认 $PORT): " PORT_V6
-            [ -z "$PORT_V6" ] && PORT_V6="$PORT"
-        else
-            read -p "请输入端口 (默认 $PORT): " PORT
-            [ -z "$PORT" ] && PORT=443
-            PORT_V6=""
-        fi
-        
-
-    fi
-
-
-    check_and_handle_port_usage "$PORT"
-
-    
-
-    SECRET="${SECRET:-$(generate_secret)}"
-    echo -e "${GREEN}生成的密钥: $SECRET${PLAIN}"
-
 
     # Generate config.py file with the selected values
     mkdir -p "$CONFIG_DIR"
@@ -427,30 +470,7 @@ install_mtp_go() {
         IPV6_CFG="\"::\""
     fi
 
-    # Create the config.py file
-    cat > "$CONFIG_DIR/config.py" <<EOF
-PORT = $PORT
-USERS = {
-    "tg": "$SECRET"
-}
-MODES = {
-    "classic": False,
-    "secure": False,
-    "tls": True
-}
-TLS_DOMAIN = "$DOMAIN"
-LISTEN_ADDR_IPV4 = $IPV4_CFG
-LISTEN_ADDR_IPV6 = $IPV6_CFG
-EOF
 
-    if [ -n "$PORT_V6" ]; then
-        echo "PORT_IPV6 = $PORT_V6" >> "$CONFIG_DIR/config.py"
-    fi
-
-    # If ad tag is provided, add it to the config
-    if [ -n "$ADTAG" ]; then
-        echo "AD_TAG = \"$ADTAG\"" >> "$CONFIG_DIR/config.py"
-    fi
 
     # Proceed with the installation using the variables
     create_service_mtg "$PORT" "$SECRET" "$DOMAIN" "$IP_MODE" "$PORT_V6"
@@ -534,7 +554,7 @@ create_service_mtg() {
         NET_ARGS="-i prefer-ipv6 [::]:$PORT"
     fi
     
-    CMD_ARGS="simple-run -n 1.1.1.1 -t 30s -a 1mb $NET_ARGS $FULL_SECRET"
+    CMD_ARGS="simple-run -n 1.1.1.1 -t 30s -a 100mb $NET_ARGS $FULL_SECRET"
     EXEC_CMD="$BIN_DIR/mtg-go $CMD_ARGS"
     
     echo -e "${BLUE}正在创建服务 (Go)...${PLAIN}"
@@ -603,6 +623,33 @@ check_service_status() {
         fi
     fi
 }
+
+check_port_or_suggest_noninteractive() {
+    local port="$1"
+    if is_port_occupied "$port"; then
+        err "端口 $port 已被占用，尝试为您推荐可用端口..."
+        # 获取推荐端口
+        local res radius ports
+        if res="$(suggest_ports "$port" "5 20" 5)"; then
+            radius="${res%%|*}"
+            ports="${res#*|}"
+            echo -e "${BLUE}推荐可用端口(±${radius}): ${GREEN}${ports}${PLAIN}"
+            # 如果需要，可以提供用户选择的机制（例如自动选择第一个端口）
+            PORT="${ports%% *}"
+        else
+            echo -e "${YELLOW}无法找到可用端口，使用默认端口 $port.${PLAIN}"
+        fi
+        return 1
+    fi
+    return 0
+}
+
+
+
+check_port_or_exit_noninteractive() {
+   check_port_or_suggest_noninteractive "$1"
+}
+
 
 # --- 修改配置逻辑 ---
 modify_mtg() {
@@ -963,29 +1010,70 @@ control_service() {
 
 delete_all() {
     echo -e "${RED}正在卸载所有服务...${PLAIN}"
-    control_service stop
-    
+
+    # 确保已检测系统（依赖 INIT_SYSTEM / WORKDIR / BIN_DIR / CONFIG_DIR 等变量）
+    if [[ -z "$INIT_SYSTEM" ]]; then
+        check_sys
+    fi
+
+    # 1) 停止 + 禁用 + 删除服务文件
     if [[ "$INIT_SYSTEM" == "systemd" ]]; then
-        systemctl disable mtg mtp-python 2>/dev/null
-        rm -f /etc/systemd/system/mtg.service /etc/systemd/system/mtp-python.service
-        systemctl daemon-reload
-    else
+        echo -e "${BLUE}检测到 systemd，停止并清理服务...${PLAIN}"
+
+        systemctl stop mtg 2>/dev/null
+        systemctl stop mtp-python 2>/dev/null
+
+        systemctl disable mtg 2>/dev/null
+        systemctl disable mtp-python 2>/dev/null
+
+        rm -f /etc/systemd/system/mtg.service
+        rm -f /etc/systemd/system/mtp-python.service
+
+        systemctl daemon-reload 2>/dev/null
+
+    elif [[ "$INIT_SYSTEM" == "openrc" ]]; then
+        echo -e "${BLUE}检测到 OpenRC，停止并清理服务...${PLAIN}"
+
+        rc-service mtg stop 2>/dev/null
+        rc-service mtp-python stop 2>/dev/null
+
         rc-update del mtg default 2>/dev/null
         rc-update del mtp-python default 2>/dev/null
-        rm -f /etc/init.d/mtg /etc/init.d/mtp-python
-    fi
-    
-    rm -rf "$WORKDIR"
-    
-    echo -e "${RED}清理本地安装包...${PLAIN}"
-    rm -f "${SCRIPT_DIR}/mtp-python"* 
-    rm -f "${SCRIPT_DIR}/mtg-go"*
 
-    # 删除脚本自身
-    rm -f "$0"
-    
+        rm -f /etc/init.d/mtg
+        rm -f /etc/init.d/mtp-python
+
+        # OpenRC 不需要 systemctl daemon-reload
+    else
+        echo -e "${YELLOW}未知初始化系统，尝试尽力停止服务...${PLAIN}"
+        killall mtg-go 2>/dev/null
+        killall mtp-python 2>/dev/null
+    fi
+
+    # 2) 删除二进制与配置
+    echo -e "${BLUE}清理安装目录...${PLAIN}"
+
+    # 只要 WORKDIR 存在并且不是空变量，就删
+    if [[ -n "$WORKDIR" && -d "$WORKDIR" ]]; then
+        rm -rf "$WORKDIR"
+        echo -e "${GREEN}删除 $WORKDIR 完成。${PLAIN}"
+    else
+        # 兼容你旧脚本里写死 /opt/mtproxy 的情况
+        if [[ -d /opt/mtproxy ]]; then
+            rm -rf /opt/mtproxy
+            echo -e "${GREEN}删除 /opt/mtproxy 完成。${PLAIN}"
+        fi
+    fi
+
+    # 3) 清理可能的额外目录（可选）
+    rm -rf /etc/mtproxy 2>/dev/null
+    rm -rf /var/log/mtproxy 2>/dev/null
+
     echo -e "${GREEN}卸载完成。${PLAIN}"
 }
+
+
+
 
 back_to_menu() {
     echo ""
@@ -1020,8 +1108,10 @@ menu() {
     read -p "请选择: " choice
     
     case $choice in
-        1) install_base_deps; install_mtp_go; back_to_menu ;;
-        2) install_base_deps; install_mtp_python; back_to_menu ;;
+        1) menu_operation_go; 
+            ;;
+        2) menu_operation_python; 
+            ;;
         3) show_detail_info ;;
         4) modify_config ;;
         5) delete_config ;;
@@ -1035,33 +1125,151 @@ menu() {
 }
 
 
-# Function to check if the required environment variable is set
-is_non_interactive() {
-    # 端口号不为空代表是非交互式安装
-    if [ [ -n "$PORT" ]  ]; then
-        return 0  # Non-interactive installation (at least one variable is set)
-    else
-        return 1  # Interactive installation (none of the variables are set)
-    fi
+
+menu_operation_go() {
+    INTERACTIVE_FLAG=1
+
+    # 1) 先收集非端口信息（域名/IP_MODE/secret）
+    # 如果你现在的 inputs_interactive() 里还包含端口输入，建议你把端口输入挪出来（见下方小建议）
+    inputs_interactive_base_only
+
+    # 2) 端口循环输入
+    while true; do
+        if [[ "$IP_MODE" == "dual" ]]; then
+            read -p "$(yellow "请输入 IPv4 端口 (默认: ${PORT:-443}): ")" tmp
+            PORT="${tmp:-${PORT:-443}}"
+
+            if check_port_or_prompt_interactive "$PORT"; then
+                :
+            else
+                echo -e "${YELLOW}端口 $PORT 被占用。${PLAIN}"
+                if [[ -n "$SUGGESTED_PORTS" ]]; then
+                    echo -e "${BLUE}推荐可用端口(±${SUGGESTED_RADIUS}): ${GREEN}${SUGGESTED_PORTS}${PLAIN}"
+                else
+                    echo -e "${BLUE}推荐可用端口: ${GREEN}${SUGGESTED_RANDOM}${PLAIN}"
+                fi
+                continue
+            fi
+
+            read -p "$(yellow "请输入 IPv6 端口 (默认: ${PORT_V6:-$PORT}): ")" tmp
+            PORT_V6="${tmp:-${PORT_V6:-$PORT}}"
+
+            # 如果你允许 v4/v6 分端口：这里也检查
+            if [[ "$PORT_V6" != "$PORT" ]]; then
+                if ! check_port_or_prompt_interactive "$PORT_V6"; then
+                    echo -e "${YELLOW}端口 $PORT_V6 被占用。${PLAIN}"
+                    if [[ -n "$SUGGESTED_PORTS" ]]; then
+                        echo -e "${BLUE}推荐可用端口(±${SUGGESTED_RADIUS}): ${GREEN}${SUGGESTED_PORTS}${PLAIN}"
+                    else
+                        echo -e "${BLUE}推荐可用端口: ${GREEN}${SUGGESTED_RANDOM}${PLAIN}"
+                    fi
+                    continue
+                fi
+            fi
+
+            break
+        else
+            read -p "$(yellow "请输入端口 (默认: ${PORT:-443}): ")" tmp
+            PORT="${tmp:-${PORT:-443}}"
+            PORT_V6=""
+
+            if check_port_or_prompt_interactive "$PORT"; then
+                break
+            else
+                echo -e "${YELLOW}端口 $PORT 被占用。${PLAIN}"
+                if [[ -n "$SUGGESTED_PORTS" ]]; then
+                    echo -e "${BLUE}推荐可用端口(±${SUGGESTED_RADIUS}): ${GREEN}${SUGGESTED_PORTS}${PLAIN}"
+                else
+                    echo -e "${BLUE}推荐可用端口: ${GREEN}${SUGGESTED_RANDOM}${PLAIN}"
+                fi
+            fi
+        fi
+    done
+
+    install_base_deps
+    install_mtp_go
+    back_to_menu
 }
 
 
-non_interactive_init() {
-    # Correct the variable assignment
-    local value="$is_non_interactive"
+menu_operation_python() {
+    INTERACTIVE_FLAG=1
 
-    # Use [[ ... ]] for string comparison
-    if is_non_interactive; then
-        echo -e "${GREEN}非交互式安装模式已启用${PLAIN}"
-        INTERACTIVE_FLAG=0
-        non_interactive_install_quick
+    # 1) 先收集非端口信息（域名/IP_MODE/secret）
+    # 如果你现在的 inputs_interactive() 里还包含端口输入，建议你把端口输入挪出来（见下方小建议）
+    inputs_interactive_base_only
 
-    else
-        echo -e "${GREEN}交互式安装模式已启用${PLAIN}"
-        INTERACTIVE_FLAG=1
-        menu
-    fi
+    # 2) 端口循环输入
+    while true; do
+        if [[ "$IP_MODE" == "dual" ]]; then
+            read -p "$(yellow "请输入 IPv4 端口 (默认: ${PORT:-443}): ")" tmp
+            PORT="${tmp:-${PORT:-443}}"
+
+            if check_port_or_prompt_interactive "$PORT"; then
+                :
+            else
+                echo -e "${YELLOW}端口 $PORT 被占用。${PLAIN}"
+                if [[ -n "$SUGGESTED_PORTS" ]]; then
+                    echo -e "${BLUE}推荐可用端口(±${SUGGESTED_RADIUS}): ${GREEN}${SUGGESTED_PORTS}${PLAIN}"
+                else
+                    echo -e "${BLUE}推荐可用端口: ${GREEN}${SUGGESTED_RANDOM}${PLAIN}"
+                fi
+                continue
+            fi
+
+            read -p "$(yellow "请输入 IPv6 端口 (默认: ${PORT_V6:-$PORT}): ")" tmp
+            PORT_V6="${tmp:-${PORT_V6:-$PORT}}"
+
+            # 如果你允许 v4/v6 分端口：这里也检查
+            if [[ "$PORT_V6" != "$PORT" ]]; then
+                if ! check_port_or_prompt_interactive "$PORT_V6"; then
+                    echo -e "${YELLOW}端口 $PORT_V6 被占用。${PLAIN}"
+                    if [[ -n "$SUGGESTED_PORTS" ]]; then
+                        echo -e "${BLUE}推荐可用端口(±${SUGGESTED_RADIUS}): ${GREEN}${SUGGESTED_PORTS}${PLAIN}"
+                    else
+                        echo -e "${BLUE}推荐可用端口: ${GREEN}${SUGGESTED_RANDOM}${PLAIN}"
+                    fi
+                    continue
+                fi
+            fi
+
+            break
+        else
+            read -p "$(yellow "请输入端口 (默认: ${PORT:-443}): ")" tmp
+            PORT="${tmp:-${PORT:-443}}"
+            PORT_V6=""
+
+            if check_port_or_prompt_interactive "$PORT"; then
+                break
+            else
+                echo -e "${YELLOW}端口 $PORT 被占用。${PLAIN}"
+                if [[ -n "$SUGGESTED_PORTS" ]]; then
+                    echo -e "${BLUE}推荐可用端口(±${SUGGESTED_RADIUS}): ${GREEN}${SUGGESTED_PORTS}${PLAIN}"
+                else
+                    echo -e "${BLUE}推荐可用端口: ${GREEN}${SUGGESTED_RANDOM}${PLAIN}"
+                fi
+            fi
+        fi
+    done
+
+    install_base_deps
+    install_mtp_python
+    back_to_menu
 }
+
+
+inputs_interactive_base_only() {
+    read -p "$(yellow "请输入伪装域名 (默认: ${DOMAIN:-www.apple.com}): ")" tmp
+    DOMAIN="${tmp:-${DOMAIN:-www.apple.com}}"
+
+    IP_MODE="$(select_ip_mode)"
+
+    if [[ -z "$SECRET" ]]; then
+        SECRET="$(generate_secret)"
+    fi
+    echo -e "${GREEN}生成的密钥: $SECRET${PLAIN}"
+}
+
 
 
 interactive_install_quick(){
@@ -1076,17 +1284,35 @@ non_interactive_install_quick() {
     install_base_deps
 
     install_mode_init
-    # Check INSTALL_MODE and proceed accordingly
+    inputs_noninteractive
+
+    # 非交互下端口占用：直接退出
+    check_port_or_exit_noninteractive "$PORT"
+    if [[ "$IP_MODE" == "dual" && -n "$PORT_V6" && "$PORT_V6" != "$PORT" ]]; then
+        check_port_or_exit_noninteractive "$PORT_V6"
+    fi
+
     if [[ "$INSTALL_MODE" == "go" ]]; then
-        install_mtp_go  # Install Go version
-    elif [[ "$INSTALL_MODE" == "py" ]]; then
-        install_mtp_python  # Install Python version
+        install_mtp_go
     else
-        echo -e "${RED}无效的安装模式: $INSTALL_MODE${PLAIN}"
-        exit 1
+        install_mtp_python
     fi
 
     echo -e "${GREEN}无交互式安装完成！${PLAIN}"
+}
+
+
+install_entry(){
+       if [[ -z "$PORT" ]]; then
+            echo -e "${GREEN}未指定PORT，进入交互式安装模式...${PLAIN}"
+            INTERACTIVE_FLAG=1  # Interactive mode
+            menu  # Call the menu for interactive installation
+        else
+            echo -e "${GREEN}已指定PORT，进入非交互式安装模式...${PLAIN}"
+            INTERACTIVE_FLAG=0  # Non-interactive mode
+            non_interactive_install_quick  # Proceed with non-interactive installation
+        fi
+
 }
 
 
@@ -1096,18 +1322,14 @@ main() {
 
     # If no argument is provided, proceed with installation
     if [[ -z "$1" ]]; then
-        if [[ -z "$PORT" ]]; then
-            echo -e "${GREEN}未指定PORT，进入交互式安装模式...${PLAIN}"
-            INTERACTIVE_FLAG=1  # Interactive mode
-            menu  # Call the menu for interactive installation
-        else
-            echo -e "${GREEN}已指定PORT，进入非交互式安装模式...${PLAIN}"
-            INTERACTIVE_FLAG=0  # Non-interactive mode
-            non_interactive_install_quick  # Proceed with non-interactive installation
-        fi
+        install_entry
     else
         # Handle commands like del, list, start, stop
         case "$1" in
+            rep)
+                delete_all
+                install_entry
+                ;;
             del)
                 delete_all
                 ;;
