@@ -235,7 +235,8 @@ check_and_install_deps() {
 check_and_install_deps "$1"
 
 v46url="https://icanhazip.com"
-agsburl="https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/sb000.sh"
+agsburl="https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/sb111.sh"
+
 
 
 #彩虹打印
