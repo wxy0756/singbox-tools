@@ -206,7 +206,7 @@ export oap=${oap:-''}
 install_deps
 
 v46url="https://icanhazip.com"
-agsburl="https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/sb.sh"
+agsburl="https://raw.githubusercontent.com/jyucoeng/singbox-tools/refs/heads/main/sb000.sh"
 
 # ================== 颜色函数 ==================
 white(){ echo -e "\033[1;37m$1\033[0m"; }
