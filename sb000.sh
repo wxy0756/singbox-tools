@@ -367,7 +367,7 @@ EOF
         anytls_password="$uuid"
 
         cat >> "$HOME/agsb/sb.json" <<EOF
-{"type": "anytls", "tag": "anytls-sb", "listen": "::", "listen_port": ${port_anytls}, "users": [ { "name": "anytls", "password": "${anytls_password}" } ], "tls": { "enabled": true, "alpn": ["h2", "http/1.1"], "certificate_path": "$HOME/agsb/anytls_cert.pem", "key_path": "$HOME/agsb/anytls_private.key", "server_name": "${any_sni}" }},
+{"type": "anytls", "tag": "anytls-sb", "listen": "::", "listen_port": ${port_anytls}, "users": [ { "name": "anytls", "password": "${anytls_password}" } ], "tls": { "enabled": true, "insecure": true, "alpn": ["h2", "http/1.1"], "certificate_path": "$HOME/agsb/anytls_cert.pem", "key_path": "$HOME/agsb/anytls_private.key", "server_name": "${any_sni}" }},
 EOF
     fi
 
@@ -901,7 +901,7 @@ cip(){
         any_sni=$(cat "$HOME/agsb/any_sni" 2>/dev/null || echo "${any_sni}")
         password=$uuid
        # anytls_link="anytls://${uuid}:${password}@${server_ip}:${port_anytls}?sni=${any_sni}&security=tls&alpn=h3&allow_insecure=1#${sxname}anytls-$hostname"
-        anytls_link="anytls://${password}@${server_ip}:${port_anytls}?sni=${any_sni}&alpn=h2,http/1.1#${sxname}anytls-$hostname"
+        anytls_link="anytls://${password}@${server_ip}:${port_anytls}?sni=${any_sni}&alpn=h2,http/1.1&allow_insecure=true#${sxname}anytls-$hostname"
 
 
     
@@ -909,7 +909,7 @@ cip(){
         green "$anytls_link" | tee -a "$HOME/agsb/jh.txt"
 
         purple "Surge版AnyTLS(直连协议，给有surge的小伙伴用的)："
-        surge_anytls_link="${sxname}anytls-$hostname = anytls, ${server_ip}, ${port_anytls}, password=${uuid}, sni=${any_sni}, alpn=h2,http/1.1"
+        surge_anytls_link="${sxname}anytls-$hostname = anytls, ${server_ip}, ${port_anytls}, password=${uuid}, sni=${any_sni}, alpn=h2,http/1.1, allow_insecure=true"
 
         green "$surge_anytls_link"
         echo;
