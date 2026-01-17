@@ -80,8 +80,13 @@ install_deps() {
     # =========================
     # 公共依赖（各发行版基本一致）
     local COMMON_PKGS=(
-        curl wget jq openssl
-        iptables bc lsof
+        curl 
+        wget 
+        jq 
+        openssl
+        iptables 
+        bc 
+        lsof
         psmisc
     )
 
